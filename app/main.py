@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -17,6 +17,8 @@ app = FastAPI(title="SecretAI local development API", version="0.1.0")
 def database():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
+    con.execute('PRAGMA foreign_keys=ON')
+    con.execute('PRAGMA busy_timeout=5000')
     try:
         yield con
         con.commit()
@@ -104,15 +106,17 @@ def create_appointment(data: Appointment):
                              (data.service_id, data.organization_id)).fetchone()
         if not service:
             raise HTTPException(404, "Servizio inesistente")
+        db.execute('BEGIN IMMEDIATE')
         start = data.starts_at
         if start.tzinfo is None:
             raise HTTPException(422, "Specificare il fuso orario nella data")
+        start = start.astimezone(timezone.utc)
         end = start + timedelta(minutes=service["duration_minutes"])
         start_iso, end_iso = start.isoformat(), end.isoformat()
-        # Demo uses ISO timestamps. Production needs timezone-normalized instants,
-        # transactions and external-calendar conflict verification.
+        # UTC timestamps + write transaction avoid local demo conflicts.
+        # Production also needs external-calendar verification and idempotency.
         overlaps = db.execute(
-            "SELECT 1 FROM appointments WHERE organization_id=? AND starts_at<? AND ends_at=? LIMIT 1",
+            "SELECT 1 FROM appointments WHERE organization_id=? AND starts_at<? AND ends_at>? LIMIT 1",
             (data.organization_id, end_iso, start_iso)
         ).fetchone()
         if overlaps:
