@@ -255,3 +255,7 @@ async def chat(data: ChatRequest, user_id: int = Depends(current_user)):
 # Install local booking routes after all dependencies are defined.
 from app.booking_tools import install as install_booking_routes
 app.include_router(install_booking_routes(database, current_user, require_org))
+
+# Meta inbound messaging (requires external credentials for live traffic).
+from app.meta_channels import install as install_meta_routes
+app.include_router(install_meta_routes(database, current_user, require_org))
