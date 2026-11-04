@@ -13,17 +13,20 @@ button:hover{background:#e74700}.item{padding:10px 0;border-bottom:1px solid #33
 .error{color:#ff9980}label{display:block;margin-top:8px;font-size:13px;color:#c3c3c8}
 </style></head><body>
 <header><div class="logo">Secret<span style="color:#ff5000">AI</span></div><small>Ambiente di sviluppo locale · Non pubblico</small></header>
-<main><h1>La tua segretaria AI</h1><p class="muted">Dashboard dimostrativa · Dati locali · Nessun canale esterno collegato</p>
+<main><section id="authBox"><h2>Accedi o registrati</h2><label>Email</label><input id="email" type="email" autocomplete="username"><label>Password (minimo 12 caratteri)</label><input id="password" type="password" autocomplete="current-password"><button onclick="auth('login')">Accedi</button> <button onclick="auth('register')">Registrati</button></section><div id="workspace" hidden><button onclick="logout()">Esci</button><h1>La tua segretaria AI</h1><p class="muted">Dashboard dimostrativa · Dati locali · Nessun canale esterno collegato</p>
 <div class="grid">
 <section><h2>Azienda</h2><select id="org"></select><label>Nuova azienda</label><input id="orgname" placeholder="Nome azienda"><button onclick="addOrg()">Crea azienda</button></section>
 <section><h2>Servizi</h2><div id="services"></div><label>Nome servizio</label><input id="serviceName" placeholder="Es. Consulenza"><label>Durata (minuti)</label><input id="duration" type="number" min="5" value="30"><button onclick="addService()">Aggiungi servizio</button></section>
 <section><h2>Appuntamenti locali</h2><div id="appointments"></div><label>Cliente</label><input id="customer" placeholder="Nome cliente"><label>Servizio</label><select id="serviceSelect"></select><label>Data e ora</label><input id="when" type="datetime-local"><button onclick="addAppointment()">Prenota nella demo</button></section>
 <section><h2>Chat AI locale</h2><div id="messages" aria-live="polite">Scrivi un messaggio per testare il modello.</div><input id="question" placeholder="Come posso prenotare?"><button onclick="ask()">Invia</button><p class="muted">Richiede Ollama; non crea prenotazioni automaticamente.</p></section>
-</div><p id="status" role="status"></p></main>
+</div></div><p id="status" role="status"></p></main>
 <script>
 const el=id=>document.getElementById(id);
+let accessToken = null;
+async function auth(mode){await run(async()=>{const r=await api('auth/'+mode,{method:'POST',body:JSON.stringify({email:el('email').value,password:el('password').value})});accessToken=r.access_token;el('authBox').hidden=true;el('workspace').hidden=false;el('password').value='';await loadOrgs()})}
+async function logout(){try{await api('auth/logout',{method:'POST'})}catch(e){}accessToken=null;el('workspace').hidden=true;el('authBox').hidden=false;el('org').innerHTML='';el('services').innerHTML='';el('appointments').innerHTML='';notice('Sessione terminata')}
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function api(path,options={}){const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json'},...options});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:JSON.stringify(d.detail));return d}
+async function api(path,options={}){const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json',...(accessToken?{'Authorization':'Bearer '+accessToken}:{})},...options});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:JSON.stringify(d.detail));return d}
 const post=(path,data)=>api(path,{method:'POST',body:JSON.stringify(data)});
 function notice(t,bad=false){el('status').textContent=t;el('status').className=bad?'error':''}
 async function run(fn){try{await fn();notice('Operazione completata')}catch(e){notice(e.message,true)}}
@@ -37,5 +40,5 @@ async function addOrg(){await run(async()=>{const d=await post('organizations',{
 async function addService(){await run(async()=>{await post('services',{organization_id:oid(),name:el('serviceName').value,duration_minutes:Number(el('duration').value)});await refresh()})}
 async function addAppointment(){await run(async()=>{const d=new Date(el('when').value);if(isNaN(d))throw Error('Inserisci data e ora');await post('appointments',{organization_id:oid(),customer:el('customer').value,service_id:Number(el('serviceSelect').value),starts_at:d.toISOString()});await refresh()})}
 async function ask(){await run(async()=>{const q=el('question').value;el('messages').textContent+='\nTu: '+q;const d=await post('chat',{organization_id:oid(),message:q});el('messages').textContent+='\nAI: '+d.reply+'\n';el('messages').scrollTop=el('messages').scrollHeight;el('question').value=''})}
-el('org').addEventListener('change',()=>run(refresh));loadOrgs().catch(e=>notice(e.message,true));
+el('org').addEventListener('change',()=>run(refresh));// Login required; tokens stay in memory and are not persisted.
 </script></body></html>
