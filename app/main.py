@@ -1,0 +1,151 @@
+import os
+import sqlite3
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
+
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+
+ROOT = Path(__file__).resolve().parent.parent
+DB = Path(os.getenv("SECRET_AI_DB", str(ROOT / "secretai.db")))
+app = FastAPI(title="SecretAI local development API", version="0.1.0")
+
+@contextmanager
+def database():
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    try:
+        yield con
+        con.commit()
+    finally:
+        con.close()
+
+with database() as db:
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS organizations (
+        id INTEGER PRIMARY KEY, name TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS services (
+        id INTEGER PRIMARY KEY, organization_id INTEGER NOT NULL,
+        name TEXT NOT NULL, duration_minutes INTEGER NOT NULL,
+        FOREIGN KEY(organization_id) REFERENCES organizations(id)
+    );
+    CREATE TABLE IF NOT EXISTS appointments (
+        id INTEGER PRIMARY KEY, organization_id INTEGER NOT NULL,
+        customer TEXT NOT NULL, service_id INTEGER NOT NULL,
+        starts_at TEXT NOT NULL, ends_at TEXT NOT NULL,
+        FOREIGN KEY(organization_id) REFERENCES organizations(id)
+    );
+    """)
+    db.execute("INSERT OR IGNORE INTO organizations(id,name) VALUES (1,'Azienda demo')")
+
+class Organization(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+class Service(BaseModel):
+    organization_id: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=120)
+    duration_minutes: int = Field(ge=5, le=480)
+
+class Appointment(BaseModel):
+    organization_id: int = Field(gt=0)
+    customer: str = Field(min_length=1, max_length=120)
+    service_id: int = Field(gt=0)
+    starts_at: datetime
+
+class ChatRequest(BaseModel):
+    organization_id: int = Field(gt=0)
+    message: str = Field(min_length=1, max_length=4000)
+
+def rows(sql, params=()):
+    with database() as db:
+        return [dict(r) for r in db.execute(sql, params).fetchall()]
+
+@app.get("/")
+def index():
+    return FileResponse(ROOT / "app" / "index.html")
+
+@app.get("/api/organizations")
+def organizations():
+    return rows("SELECT * FROM organizations ORDER BY id")
+
+@app.post("/api/organizations")
+def create_organization(data: Organization):
+    with database() as db:
+        cur = db.execute("INSERT INTO organizations(name) VALUES (?)", (data.name,))
+        return {"id": cur.lastrowid, "name": data.name}
+
+@app.get("/api/services")
+def services(organization_id: int = 1):
+    return rows("SELECT * FROM services WHERE organization_id=? ORDER BY id", (organization_id,))
+
+@app.post("/api/services")
+def create_service(data: Service):
+    with database() as db:
+        if not db.execute("SELECT 1 FROM organizations WHERE id=?", (data.organization_id,)).fetchone():
+            raise HTTPException(404, "Azienda inesistente")
+        cur = db.execute("INSERT INTO services(organization_id,name,duration_minutes) VALUES (?,?,?)",
+                         (data.organization_id, data.name, data.duration_minutes))
+        return {"id": cur.lastrowid, **data.model_dump()}
+
+@app.get("/api/appointments")
+def appointments(organization_id: int = 1):
+    return rows("SELECT a.*, s.name AS service FROM appointments a JOIN services s ON s.id=a.service_id WHERE a.organization_id=? ORDER BY starts_at",
+                (organization_id,))
+
+@app.post("/api/appointments")
+def create_appointment(data: Appointment):
+    from datetime import timedelta
+    with database() as db:
+        service = db.execute("SELECT * FROM services WHERE id=? AND organization_id=?",
+                             (data.service_id, data.organization_id)).fetchone()
+        if not service:
+            raise HTTPException(404, "Servizio inesistente")
+        start = data.starts_at
+        if start.tzinfo is None:
+            raise HTTPException(422, "Specificare il fuso orario nella data")
+        end = start + timedelta(minutes=service["duration_minutes"])
+        start_iso, end_iso = start.isoformat(), end.isoformat()
+        # Demo uses ISO timestamps. Production needs timezone-normalized instants,
+        # transactions and external-calendar conflict verification.
+        overlaps = db.execute(
+            "SELECT 1 FROM appointments WHERE organization_id=? AND starts_at<? AND ends_at=? LIMIT 1",
+            (data.organization_id, end_iso, start_iso)
+        ).fetchone()
+        if overlaps:
+            raise HTTPException(409, "Orario occupato")
+        cur = db.execute(
+            "INSERT INTO appointments(organization_id,customer,service_id,starts_at,ends_at) VALUES (?,?,?,?,?)",
+            (data.organization_id, data.customer, data.service_id, start_iso, end_iso))
+        return {"id": cur.lastrowid, "starts_at": start_iso, "ends_at": end_iso}
+
+@app.post("/api/chat")
+async def chat(data: ChatRequest):
+    with database() as db:
+        org = db.execute("SELECT name FROM organizations WHERE id=?", (data.organization_id,)).fetchone()
+        if not org:
+            raise HTTPException(404, "Azienda inesistente")
+        service_list = [dict(r) for r in db.execute(
+            "SELECT name,duration_minutes FROM services WHERE organization_id=?", (data.organization_id,))]
+    prompt = (
+        "Sei una segretaria AI italiana. Rispondi in modo breve e professionale. "
+        "Non dichiarare di aver prenotato, modificato o verificato appuntamenti: "
+        "questa chat demo non ha strumenti di scrittura. "
+        f"Azienda: {org['name']}. Servizi: {service_list}."
+    )
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            response = await client.post(
+                os.getenv("OLLAMA_URL", "http://127.0.0.1:11434") + "/api/chat",
+                json={"model": os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
+                      "stream": False, "messages": [
+                          {"role": "system", "content": prompt},
+                          {"role": "user", "content": data.message}]})
+            response.raise_for_status()
+            answer = response.json()["message"]["content"]
+            return {"reply": answer, "mode": "ollama"}
+    except (httpx.HTTPError, KeyError, ValueError):
+        return {"reply": "Il modello AI locale non è disponibile. Avvia Ollama e scarica qwen2.5:3b per attivare la chat.", "mode": "offline"}
