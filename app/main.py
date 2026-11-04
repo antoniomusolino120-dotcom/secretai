@@ -259,3 +259,6 @@ app.include_router(install_booking_routes(database, current_user, require_org))
 # Meta inbound messaging (requires external credentials for live traffic).
 from app.meta_channels import install as install_meta_routes
 app.include_router(install_meta_routes(database, current_user, require_org))
+
+from app.appointment_lifecycle import install as install_appointment_lifecycle
+app.include_router(install_appointment_lifecycle(database, current_user, require_org))
