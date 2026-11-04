@@ -251,3 +251,7 @@ async def chat(data: ChatRequest, user_id: int = Depends(current_user)):
             return {"reply": answer, "mode": "ollama"}
     except (httpx.HTTPError, KeyError, ValueError):
         return {"reply": "Il modello AI locale non è disponibile. Avvia Ollama e scarica qwen2.5:3b per attivare la chat.", "mode": "offline"}
+
+# Install local booking routes after all dependencies are defined.
+from app.booking_tools import install as install_booking_routes
+app.include_router(install_booking_routes(database, current_user, require_org))
