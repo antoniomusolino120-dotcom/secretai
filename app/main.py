@@ -262,3 +262,6 @@ app.include_router(install_meta_routes(database, current_user, require_org))
 
 from app.appointment_lifecycle import install as install_appointment_lifecycle
 app.include_router(install_appointment_lifecycle(database, current_user, require_org))
+
+from app.google_calendar import install as install_google_calendar
+app.include_router(install_google_calendar(database, current_user, require_org))
