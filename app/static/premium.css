@@ -79,3 +79,17 @@ aside .secretai-logo-word{font-size:25px;color:#161a20}
 @keyframes secretai-spin{to{transform:rotate(360deg)}}
 @media(max-width:760px){.auth{min-height:100svh;padding:170px 20px 45px;align-items:center}.auth-story{min-height:0;padding:0}.auth-story>.brand{top:clamp(66px,13vh,150px)}.auth-card{padding:30px 25px;border-radius:26px}.auth-card h2{font-size:33px}.secretai-logo-icon{width:54px;height:54px}.secretai-logo-word{font-size:36px}}
 @media(prefers-reduced-motion:reduce){.auth-spinner{animation-duration:2s}}
+
+/* Black-glass controls and layered frosted surfaces */
+.auth{background:radial-gradient(ellipse 70% 60% at 100% 96%,#ff730e 0%,#a4381e 38%,transparent 76%),radial-gradient(ellipse 80% 70% at -15% -10%,#303d52 0%,transparent 72%),#11131d}
+.auth-card{background:linear-gradient(125deg,#ffffff24 0%,#ffffff0d 48%,#ffffff12 100%);border:1px solid #ffffff50;box-shadow:inset 0 1px 0 #ffffff36,inset 0 -1px 0 #ffffff08,0 22px 60px #07091055;backdrop-filter:blur(36px) saturate(135%);-webkit-backdrop-filter:blur(36px) saturate(135%)}
+.auth-card input{background:linear-gradient(155deg,#ffffff29,#ffffff12)!important;border:1px solid #ffffff5c!important;box-shadow:inset 0 1px 0 #ffffff2b,0 5px 18px #00000015!important;color:#fff!important;border-radius:15px!important;min-height:56px}
+.auth-card input:focus{border-color:#ffb78b!important;outline:2px solid #ffb78b55!important;background:#ffffff25!important}
+.auth-card input:-webkit-autofill{-webkit-text-fill-color:#fff;transition:background-color 9999s ease-out}
+.auth-card form button[type=submit],.auth-card button.text{background:linear-gradient(165deg,#31343cdb 0%,#111319e8 65%,#050609e8 100%)!important;color:#fff!important;border:1px solid #ffffff48!important;border-radius:15px!important;box-shadow:inset 0 1px 0 #ffffff42,0 8px 20px #00000030!important;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);min-height:54px}
+.auth-card form button[type=submit]:hover,.auth-card button.text:hover{background:linear-gradient(165deg,#454852,#17191f)!important}
+.auth-card button.text{width:100%;justify-content:center;margin-top:10px;padding:12px 14px}
+.auth-card .hint{color:#d5cbd0}
+.auth-story>.brand .secretai-logo-word{color:#fff}
+.auth-story>.brand .secretai-logo-word>span{color:#ff620b}
+@media(max-width:760px){.auth-card{border-radius:27px}.auth-card input{min-height:55px}}
