@@ -36,11 +36,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 key = hashlib.sha256((ip + ":" + request.url.path).encode()).hexdigest()
                 now, window = int(time.time()), int(time.time()) // 300
                 with self.database(write=True) as db:
-                    db.execute("DELETE FROM rate_limits WHERE window<?", (window - 2,))
-                    db.execute("""INSERT INTO rate_limits(bucket,window,count) VALUES (?,?,1)
+                    db.execute("DELETE FROM rate_limits WHERE window_start<?", (window - 2,))
+                    db.execute("""INSERT INTO rate_limits(bucket,window_start,count) VALUES (?,?,1)
                         ON CONFLICT(bucket) DO UPDATE SET
-                        count=CASE WHEN rate_limits.window=excluded.window THEN rate_limits.count+1 ELSE 1 END,
-                        window=excluded.window""", (key, window))
+                        count=CASE WHEN rate_limits.window_start=excluded.window_start THEN rate_limits.count+1 ELSE 1 END,
+                        window_start=excluded.window_start""", (key, window))
                     count = db.execute("SELECT count FROM rate_limits WHERE bucket=?", (key,)).fetchone()["count"]
                 if count > int(os.getenv("SECRET_AI_AUTH_RATE_LIMIT", "30")):
                     response = JSONResponse({"detail": "Troppi tentativi; riprova tra qualche minuto"},
