@@ -7,22 +7,37 @@ navigate=async page=>{state.openHistory.clear();await previousNavigate(['overvie
 const controlPath=()=>`organizations/${state.org}/automation`;
 
 function channelRow(channel,p){
- const unavailable=!p.available,connected=p.connected;
- const status=unavailable?'Non ancora disponibile':!connected?'Da collegare':!p.enabled?'Spento':p.responding?'Acceso · fascia attiva':'Acceso · fuori orario';
- const connection=channel==='web'?'':channel==='voice'?action('Configura linea','navigate','voice','text'):channel==='email'?'':action(connected?'Gestisci collegamento':'Collega account',connected?'channel-manage':'meta-oauth',channel,'text');
- return `<article class="channel-control" data-channel="${channel}"><div class="channel-heading"><div><h3>${channelNames[channel]}</h3><p class="channel-status ${p.responding?'is-live':''}">${status}</p></div><button type="button" class="channel-switch" role="switch" aria-checked="${Boolean(p.enabled&&connected)}" aria-label="Risposte automatiche ${channelNames[channel]}" data-action="channel-toggle" data-id="${channel}" ${!connected||unavailable?'disabled':''}><span></span></button></div>${unavailable?'<p class="subtext">Il collegamento email sarà aggiunto dopo il collaudo dei primi canali.</p>':`<form class="channel-schedule" data-channel="${channel}"><label class="all-day"><input type="checkbox" name="all_day" ${p.all_day?'checked':''}>Tutto il giorno</label><div class="time-window" ${p.all_day?'hidden':''}>${field('Inizio','start_time',p.start_time,'time',true)}${field('Fine','end_time',p.end_time,'time',true)}</div><fieldset class="weekdays"><legend>Giorni di inizio</legend>${dayNames.map((d,i)=>`<label><input type="checkbox" name="day" value="${i}" ${p.days.includes(i)?'checked':''}><span>${d}</span></label>`).join('')}</fieldset><div class="channel-bottom"><small>${!p.all_day&&p.start_time>p.end_time?'La fascia termina il giorno successivo.':'Orari in '+esc(state.automation.timezone)}</small><button class="text" type="submit">Salva orari</button></div></form>${connection}`}</article>`;
+ const active=Boolean(p.enabled&&p.connected),unavailable=!p.available;
+ const status=unavailable?'In arrivo':!p.connected?'Da collegare':!active?'Disattivato':p.responding?'Attivo':'Attivo · fuori orario';
+ return `<article class="channel-control compact-channel ${active?'is-enabled':''}" data-channel="${channel}"><div class="channel-identity">${channelLogo(channel)}<div><h3>${channelNames[channel]}</h3><p class="channel-status ${active?'is-live':''}">${status}</p></div></div><div class="channel-actions">${unavailable?'<span class="coming-soon">Presto disponibile</span>':active?`<button class="channel-configure" type="button" data-action="channel-configure" data-id="${channel}" aria-label="Configura ${channelNames[channel]}">${uiIcon('settings')}<span>Configura</span></button><button class="channel-power is-on" type="button" role="switch" aria-checked="true" aria-label="Risposte automatiche ${channelNames[channel]}" data-action="channel-toggle" data-id="${channel}">${uiIcon('power')}<span>Spegni</span></button>`:`<button class="channel-activate" type="button" data-action="channel-configure" data-id="${channel}" aria-label="Attiva ${channelNames[channel]}">${uiIcon('power')}<span>Attiva</span></button>`}</div></article>`;
 }
+
+function channelConfiguration(channel,p){
+ const connected=p.connected,active=Boolean(p.enabled&&connected);
+ const link=channel==='web'?'':channel==='voice'?action('Collega la linea telefonica','channel-connect',channel):action(connected?'Gestisci account':'Collega '+channelNames[channel],'channel-connect',channel);
+ return `<div class="channel-setup"><div class="setup-identity">${channelLogo(channel)}<div><strong>${channelNames[channel]}</strong><p>${connected?'Collegato': 'Collega il tuo account per attivare le risposte.'}</p></div></div>${link?`<div class="setup-connection">${link}</div>`:''}<form class="channel-schedule" data-channel="${channel}" data-config="true"><h3>Quando deve rispondere?</h3><label class="all-day"><input type="checkbox" name="all_day" ${p.all_day?'checked':''}>Tutto il giorno</label><div class="time-window" ${p.all_day?'hidden':''}>${field('Dalle','start_time',p.start_time,'time',true)}${field('Alle','end_time',p.end_time,'time',true)}</div><fieldset class="weekdays"><legend>Giorni</legend>${dayNames.map((d,i)=>`<label><input type="checkbox" name="day" value="${i}" ${p.days.includes(i)?'checked':''}><span>${d}</span></label>`).join('')}</fieldset><p class="subtext">${!p.all_day&&p.start_time>p.end_time?'La fascia termina il giorno successivo. ':''}Fuso orario: ${esc(state.automation.timezone)}</p>${!connected?'<p class="setup-hint">Puoi salvare gli orari. Le risposte resteranno spente finché non colleghi l’account e le attivi.</p>':''}<button type="submit" class="setup-submit">${connected?active?'Salva modifiche':'Attiva risposte':'Salva orari'}</button></form></div>`;
+}
+actions['channel-configure']=channel=>{
+ const p=state.automation.channels[channel];if(!p?.available)return;
+ dialog((p.enabled&&p.connected?'Configura ':'Attiva ')+channelNames[channel],channelConfiguration(channel,p));
+};
+actions['channel-connect']=async channel=>{
+ $('#dialog').close();
+ if(channel==='voice')return navigate('voice');
+ if(state.automation.channels[channel].connected)return actions['channel-manage'](channel);
+ return actions['meta-oauth'](channel);
+};
 
 function calendarChoice(integrations){
  const target=state.automation.calendar_target;
- return `<section class="card calendar-choice" aria-labelledby="calendar-title"><div class="card-head"><div><h2 id="calendar-title">Dove gestisci gli appuntamenti?</h2><p class="subtext">SecretAI lavora nel calendario che usi già.</p></div></div><div class="calendar-options">${[['google','Google Calendar','Collega Google e scegli il calendario dove inserire gli appuntamenti.'],['browser','Uso un altro strumento','Mostra con una registrazione guidata come usi l’agenda del tuo gestionale.']].map(([id,title,description])=>`<button class="calendar-option ${target===id?'selected':''}" data-action="calendar-target" data-id="${id}" aria-pressed="${target===id}"><span class="choice-dot"></span><strong>${title}</strong><small>${description}</small></button>`).join('')}</div>${target==='auto'?'<p class="subtext">Scegli lo strumento da usare per le nuove prenotazioni.</p>':target==='google'?`<div class="calendar-next"><span>${integrations.google.connected?'Google collegato':'Google da collegare'}</span>${integrations.google.connected?action('Scegli calendario','google-calendars')+action('Scollega Google','google-disconnect','','text danger'):action('Collega Google Calendar','google-connect')}</div>`:`<div class="calendar-next"><p class="subtext">Accedi al tuo gestionale, registra la procedura, verifica il risultato e associala ai tipi di appuntamento. Ogni procedura deve essere collaudata sullo strumento effettivo.</p>${action('Registra la procedura','navigate','automations')}</div>`}</section>`;
+ return `<section class="card calendar-choice" aria-labelledby="calendar-title"><div class="card-head"><div><h2 id="calendar-title">Dove gestisci gli appuntamenti?</h2><p class="subtext">SecretAI lavora nel calendario che usi già.</p></div></div><div class="calendar-options">${[['google','Google Calendar','Collega Google e scegli il calendario dove inserire gli appuntamenti.'],['browser','Uso un altro strumento','Mostra con una registrazione guidata come usi l’agenda del tuo gestionale.']].map(([id,title,description])=>`<button class="calendar-option ${target===id?'selected':''}" data-action="calendar-target" data-id="${id}" aria-pressed="${target===id}">${channelLogo(id==='google'?'googlecalendar':'browser')}<strong>${title}</strong><small>${description}</small></button>`).join('')}</div>${target==='auto'?'<p class="subtext">Scegli lo strumento da usare per le nuove prenotazioni.</p>':target==='google'?`<div class="calendar-next"><span>${integrations.google.connected?'Google collegato':'Google da collegare'}</span>${integrations.google.connected?action('Scegli calendario','google-calendars')+action('Scollega Google','google-disconnect','','text danger'):action('Collega Google Calendar','google-connect')}</div>`:`<div class="calendar-next"><p class="subtext">Accedi al tuo gestionale, registra la procedura, verifica il risultato e associala ai tipi di appuntamento. Ogni procedura deve essere collaudata sullo strumento effettivo.</p>${action('Registra la procedura','navigate','automations')}</div>`}</section>`;
 }
 
 views.overview=async()=>{
  const i=await api('integrations?'+orgQuery());
  // Reloads preserve expanded sections only during this visit, never across login.
  setTimeout(()=>{for(const key of state.openHistory){const element=document.querySelector(`[data-history="${key}"]`);if(element)element.open=true}},0);
- return `<section class="control-intro"><span class="eyebrow">LA TUA SEGRETARIA, AI TUOI ORARI</span><h2>Decidi quando rispondere.</h2><p>Accendi i canali che vuoi affidare all’IA e scegli quando deve occuparsene.</p></section><section class="channel-grid" aria-label="Canali e orari delle risposte automatiche">${Object.entries(state.automation.channels).map(([channel,p])=>channelRow(channel,p)).join('')}</section>${calendarChoice(i)}<div class="history-sections">${[['appointments','Appuntamenti','Gli appuntamenti fissati dall’IA, con dettagli ed esito.'],['activity','Attività','Conversazioni, telefonate e operazioni della segretaria.']].map(([id,title,copy])=>`<details class="card history-section" data-history="${id}"><summary><span><strong>${title}</strong><small>${copy}</small></span><span aria-hidden="true">＋</span></summary><div class="history-body" data-history-body="${id}"></div></details>`).join('')}</div>`;
+ return `<section class="control-intro"><h2>La tua segretaria, dove vuoi.</h2><p>Attiva un canale per collegarlo e scegliere gli orari.</p></section><section class="channel-grid" aria-label="Canali e orari delle risposte automatiche">${['whatsapp','instagram','voice','email'].map(channel=>channelRow(channel,state.automation.channels[channel])).join('')}</section>${calendarChoice(i)}`;
 };
 
 function appointmentHistory(rows){
@@ -79,5 +94,15 @@ actions['auth-login']=()=>{const form=$('#auth-form');form.querySelector('[name=
 document.addEventListener('change',event=>{if(event.target.name==='all_day')event.target.closest('form').querySelector('.time-window').hidden=event.target.checked});
 document.addEventListener('submit',event=>{
  const form=event.target;if(!form.matches('.channel-schedule'))return;event.preventDefault();
- task(async()=>{const channel=form.dataset.channel;await send(controlPath()+'/'+channel,scheduleValue(form,Boolean(state.automation.channels[channel].enabled&&state.automation.channels[channel].connected)),'PUT');await render();notify('Orari delle risposte salvati')});
+ task(async()=>{const channel=form.dataset.channel;await send(controlPath()+'/'+channel,scheduleValue(form,Boolean(state.automation.channels[channel].connected)),'PUT');$('#dialog').close();await render();notify('Configurazione salvata')});
 });
+
+// Read-only summaries have their own navigation tabs; the control page stays focused.
+views.appointments=async()=>{
+ state.appointments=await api('appointments?'+orgQuery()+'&include_cancelled=true&ai_only=true');
+ return `<section class="card"><div class="card-head"><div><h2>Appuntamenti</h2><p class="subtext">Gli appuntamenti fissati dall’IA nel tuo calendario.</p></div></div>${appointmentHistory(state.appointments)}</section>`;
+};
+views.inbox=async()=>{
+ state.threads=await api('conversations?'+orgQuery());
+ return `<section class="card"><div class="card-head"><div><h2>Attività</h2><p class="subtext">Conversazioni e operazioni dell’IA, divise per cliente e canale.</p></div></div>${activityHistory(state.threads)}</section>`;
+};

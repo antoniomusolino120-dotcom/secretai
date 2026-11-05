@@ -1,0 +1,82 @@
+/* Compact control center: configuration lives in a dialog, never in the cards. */
+#app{background:radial-gradient(ellipse at 100% 0,#55302570,transparent 50%),#151922;color:#f5f6fa}
+#app [hidden]{display:none!important}
+#app aside{background:#191e28!important;border-color:#ffffff12;color:#fff}
+#app aside>.brand{padding:9px 12px;background:#fff;border-radius:14px;width:180px}
+#app .org-label{letter-spacing:0;margin-top:32px;color:#919aaa}
+#app .org-label>span{display:block;font-size:10px;letter-spacing:1px;margin-bottom:8px}
+#organization-name{display:block;font-size:16px;font-weight:650;color:#fff}
+#app .content{max-width:1450px;padding-top:32px}
+#app header h1{color:#fff!important;font-size:28px}
+#app .eyebrow{color:#929baa}
+#app .sidebar-foot{border-color:#ffffff16;color:#fff}
+#app .sidebar-foot small{color:#a7afbe}
+#app nav button{gap:12px;color:#aeb7c7}
+#app nav button:hover{background:#ffffff0a;color:#fff}
+#app nav button.active{background:#ff742916;color:#ff9a60}
+#app .nav-icon{display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;flex-shrink:0}
+#app .nav-icon svg{width:23px;height:23px}
+#app .control-intro{background:transparent!important;border:0!important;box-shadow:none!important;padding:0;margin:8px 0 24px}
+#app .control-intro h2{color:#f5f6fa!important;font-size:26px;margin:0 0 9px}
+#app .control-intro p{color:#a6afbd!important;margin:0;font-size:14px;line-height:1.6}
+#app .channel-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:24px}
+#app .compact-channel{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:126px;padding:24px!important;grid-column:auto!important;background:linear-gradient(130deg,#ffffff0c,#ffffff04)!important;border:1px solid #ffffff18!important;border-radius:19px!important;box-shadow:inset 0 1px 0 #ffffff06;backdrop-filter:blur(15px)}
+.channel-identity,.channel-actions{display:flex;align-items:center;gap:13px;min-width:0}
+.channel-identity h3{font-size:17px;margin:0;color:#fff;letter-spacing:-.3px}
+#app .channel-status{margin:7px 0 0;color:#9fa9b9;font-size:12px}
+#app .channel-status.is-live{color:#8bdab2}
+.channel-logo{width:48px;height:48px;border-radius:14px;display:inline-flex;flex-shrink:0;align-items:center;justify-content:center;background:#ffffff10;color:#d6deeb}
+.channel-logo svg{width:25px;height:25px}
+.channel-logo>span{width:25px;height:25px;background:currentColor;mask-size:contain;mask-repeat:no-repeat;mask-position:center;-webkit-mask-size:contain;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center}
+.brand-whatsapp{background:#25d36619;color:#42dc7c}.brand-whatsapp>span{mask-image:url('/static/icons/whatsapp.svg');-webkit-mask-image:url('/static/icons/whatsapp.svg')}
+.brand-instagram{background:linear-gradient(135deg,#a73dfb26,#ff457b26,#ffa43e22);color:#ff8fa9}.brand-instagram>span{mask-image:url('/static/icons/instagram.svg');-webkit-mask-image:url('/static/icons/instagram.svg')}
+.brand-googlecalendar{background:#4285f41a;color:#6aa5ff}.brand-googlecalendar>span{mask-image:url('/static/icons/googlecalendar.svg');-webkit-mask-image:url('/static/icons/googlecalendar.svg')}
+.brand-voice{background:#8c9dff20;color:#acb8ff}.brand-email{background:#ffffff0a;color:#a6b2c6}.brand-web{background:#ff742918;color:#ffac79}
+#app .channel-actions button{min-height:42px;padding:10px 14px;gap:7px;border-radius:12px;font-size:12px;white-space:nowrap;border:1px solid #ffffff20;background:#11151e;color:#f5f6fa;box-shadow:inset 0 1px 0 #ffffff0e}
+.channel-actions button svg{height:17px;width:17px}
+#app .channel-actions .channel-activate{background:#f4f6fa;color:#202734;border-color:#fff}
+#app .channel-actions .channel-power.is-on{color:#ffaf8e;background:#ff74290a;border-color:#ff742933}
+#app .channel-actions .channel-configure{background:transparent;border-color:transparent;color:#aeb9cc;padding:10px}
+.coming-soon{font-size:11px;color:#7d889d;white-space:nowrap}
+#app .calendar-choice{padding:23px!important;background:#ffffff06;border:1px solid #ffffff14!important;color:#f2f4f8}
+#app .calendar-choice h2{font-size:17px;color:#fff;margin-bottom:7px}
+#app .calendar-choice p,#app .calendar-next{color:#a5b0c3}
+#app .calendar-option{padding:18px!important;background:#ffffff05;border:1px solid #ffffff15!important;color:#eef2fa;gap:10px;display:grid;grid-template-columns:40px 1fr;align-items:center;border-radius:14px!important}
+#app .calendar-option .channel-logo{width:37px;height:37px;border-radius:10px;grid-row:1/3}
+#app .calendar-option .channel-logo svg,#app .calendar-option .channel-logo>span{width:21px;height:21px}
+#app .calendar-option strong{font-size:13px}
+#app .calendar-option small{color:#98a5ba;font-size:11px;line-height:1.5}
+#app .calendar-option.selected{background:#ff74290d;border-color:#ff914a80!important}
+#app .calendar-next button{font-size:12px}
+#app .test-channel{margin:22px 0;color:#a6b0c2;font-size:12px}
+.test-channel>summary{cursor:pointer;padding:12px 0;min-height:44px}
+#app .test-channel .compact-channel{margin:10px 0;max-width:640px}
+#app footer{border-color:#ffffff10;color:#69758c;margin-top:28px}
+#dialog{background:#f8f9fc;color:#1e2735;padding:26px;max-width:500px;border-radius:22px}
+#dialog::backdrop{background:#070b13b8;backdrop-filter:blur(9px)}
+#dialog .dialog-head{margin-bottom:22px}#dialog .dialog-head h2{font-size:20px}
+.setup-identity{display:flex;gap:13px;align-items:center}.setup-identity strong{font-size:17px}.setup-identity p{font-size:12px;color:#728095;margin:6px 0 0;line-height:1.5}
+.setup-connection{margin:20px 0}.setup-connection>button{width:100%;font-size:13px}
+.channel-setup .channel-schedule{border-top:1px solid #e2e6ed;margin-top:22px;padding-top:22px}
+.channel-setup .channel-schedule h3{margin-bottom:18px;font-size:15px}.channel-setup .all-day{font-size:14px;gap:10px}
+.channel-setup input[type=checkbox]{min-height:0;accent-color:#ff7429}
+.channel-setup .weekdays{gap:5px}.channel-setup .weekdays span{padding:10px;font-size:12px;border-radius:9px}
+.channel-setup .weekdays input:checked+span{background:#fff0e7;border-color:#ffb68a;color:#ba4e0a}
+.channel-setup .weekdays legend{font-size:12px;margin-bottom:12px;color:#728095}
+.setup-hint{font-size:12px;color:#728095;line-height:1.6;margin:15px 0}
+.channel-setup .setup-submit{width:100%;margin-top:12px;background:#1c2433;color:#fff;min-height:48px}
+#app .card:not(.calendar-choice){color:#202734}
+@media(max-width:1100px) and (min-width:761px){#app .channel-grid{grid-template-columns:1fr}}
+@media(max-width:760px){#app aside{background:#191e28!important;padding:16px 18px!important;display:flex!important;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid #ffffff0d}#app aside>.brand{width:140px;margin:0!important;padding:8px 10px;flex-shrink:0}#app aside .secretai-brand-image{width:120px}#app .org-label{margin:0!important;text-align:right;min-width:0}#app .org-label>span{font-size:8px;margin-bottom:5px}#organization-name{font-size:13px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#app .content{padding:22px 18px 112px!important}#app header{margin-bottom:28px}#app header h1{font-size:24px}#app .control-intro h2{font-size:23px}#app .control-intro p{font-size:13px}#app .compact-channel{min-height:104px;padding:18px!important;gap:10px}#app .channel-grid{gap:11px}#app .channel-identity{gap:11px}.channel-logo{width:43px;height:43px;border-radius:13px}.channel-identity h3{font-size:16px}#app .channel-actions{gap:3px}#app .channel-actions button{padding:10px;font-size:11px;gap:5px}#app .channel-configure span{display:none}.coming-soon{font-size:10px}#app .calendar-choice{padding:19px!important}#app .calendar-options{gap:10px}#app nav .nav-icon{display:inline-flex!important;width:23px;height:23px}#app nav button{font-size:10px!important;gap:6px!important}#app nav button .nav-icon svg{width:23px;height:23px}#app .status-pill{max-width:150px;font-size:10px}#dialog{padding:22px;width:calc(100% - 28px);max-height:88dvh}.channel-setup .weekdays span{padding:9px 7px;font-size:11px}}
+/* Four fixed bottom tabs on every screen size. */
+#app{display:block}
+#app aside{position:static!important;inset:auto!important;width:100%!important;display:flex!important;align-items:center;justify-content:space-between;padding:18px max(24px,calc((100vw - 1060px)/2))!important;border-right:0;border-bottom:1px solid #ffffff0d;gap:20px}
+#app aside>.brand{margin:0!important;flex-shrink:0}
+#app .org-label{margin:0!important;text-align:right;min-width:0}
+#app .sidebar-foot{display:none}
+#app .content{margin:0 auto!important;max-width:1108px;padding:30px 24px 125px!important}
+#app nav{position:fixed!important;inset:auto auto 18px 50%!important;transform:translateX(-50%);z-index:100!important;display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;width:min(560px,calc(100% - 32px))!important;margin:0!important;padding:9px!important;gap:4px!important;border:1px solid #ffffff20!important;border-radius:22px;background:#202632ed!important;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:0 10px 40px #0005}
+#app nav button{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:0!important;min-height:57px!important;padding:7px 4px!important;font-size:11px!important;border-radius:14px!important;color:#adb7ca!important}
+#app nav button.active{background:#ff742918!important;color:#ff9c65!important}
+#app nav .nav-icon{display:inline-flex!important}
+@media(max-width:760px){#app aside{padding:15px 18px!important}#app .content{padding:22px 18px 118px!important}#app nav{inset:auto 0 0 0!important;transform:none;width:100%!important;max-width:none!important;border-radius:0!important;border-width:1px 0 0!important;padding:9px 6px calc(10px + env(safe-area-inset-bottom))!important}#app nav button{font-size:10px!important;min-height:52px!important}}
