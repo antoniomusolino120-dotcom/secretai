@@ -4,9 +4,9 @@ Questa versione non soddisfa ancora il criterio di completamento commerciale. Lo
 
 | Area | Implementato in questa versione | Residuo autonomo / prova necessaria |
 | --- | --- | --- |
-| Backend/database | PostgreSQL/SQLite, migrazioni Alembic, transazioni, vincoli tenant e indici | Eseguire e verificare CI PostgreSQL e build Docker; procedura di import da SQLite a PostgreSQL |
+| Backend/database | PostgreSQL/SQLite, migrazioni Alembic, transazioni, vincoli tenant e indici | CI PostgreSQL e build Docker superate; resta la procedura di import da SQLite a PostgreSQL |
 | Identità | Login/registrazione, email production, recupero, sessioni revocabili, cookie HttpOnly, CSRF, ruoli, rate limit persistente | Revisione sicurezza indipendente, MFA amministrativa e gestione inviti/team |
-| Dashboard | Panoramica, CRM, inbox, agenda, servizi, istruzioni/orari, collegamenti, abbonamento, audit/coda | Collaudo browser desktop/mobile; accessibilità e ulteriori flussi di modifica |
+| Dashboard | Panoramica, CRM, inbox, agenda, servizi, istruzioni/orari, collegamenti, abbonamento, audit/coda | Collaudo browser desktop/mobile superato; restano accessibilità e ulteriori flussi di modifica |
 | Prenotazioni | Concorrenza, disponibilità locale, orari/fusi, idempotenza, spostamento e cancellazione, audit | Identificazione cliente per modifiche via canali, più risorse/personale e riconciliazione dei conflitti esterni |
 | AI | Ollama come interprete di strumenti; informazioni/servizi, disponibilità, proposta e conferma esplicita, handoff | Test con un modello realmente avviato; conversazione più naturale, modifiche/cancellazioni autonome e valutazioni sistematiche |
 | Google | OAuth con stato monouso e PKCE, token cifrato/rinnovo, selezione calendari, freebusy, scrittura/modifica/cancellazione outbox | Sincronizzazione bidirezionale incrementale, webhook di cambiamento, controlli aggiuntivi su modifiche esterne; test live con calendario autorizzato |
@@ -25,7 +25,7 @@ Questa versione non soddisfa ancora il criterio di completamento commerciale. Lo
 
 ## Passi successivi
 
-1. Completare le verifiche PostgreSQL/browser/container e correggere quanto emerge.
+1. Mantenere verdi le verifiche PostgreSQL/browser/container e completare il resto delle fondamenta operative.
 2. Completare gli elementi testuali ancora mancanti senza credenziali.
 3. Sviluppare telefonia e Computer Use, poi eseguire i collaudi autorizzati.
 4. Preparare staging e collaudo live quando disponibili account, accessi e scelte commerciali.
