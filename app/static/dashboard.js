@@ -3,7 +3,7 @@ const channelNames={whatsapp:'WhatsApp',instagram:'Instagram',voice:'Telefono',e
 const dayNames=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
 state.openHistory=new Set();
 const previousNavigate=navigate;
-navigate=async page=>{state.openHistory.clear();await previousNavigate(['overview','services','assistant','voice','automations'].includes(page)?page:'overview');window.scrollTo(0,0)};
+navigate=async page=>{state.openHistory.clear();await previousNavigate(['overview','services','appointments','inbox','assistant','voice','automations'].includes(page)?page:'overview');window.scrollTo(0,0)};
 const controlPath=()=>`organizations/${state.org}/automation`;
 
 function channelRow(channel,p){
