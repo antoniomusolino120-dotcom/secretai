@@ -63,12 +63,13 @@ def install(database, current_user, require_org):
             route = db.execute('SELECT * FROM voice_routes WHERE id=? AND enabled=1',(data.route_id,)).fetchone()
             if not route: raise HTTPException(404,'Route unavailable')
             org_id=route['organization_id']; db.lock_org(org_id)
-            if not db.execute('SELECT assistant_enabled FROM organizations WHERE id=?',(org_id,)).fetchone()['assistant_enabled']:
+            from app.channel_controls import permitted, policy
+            if not permitted(db, org_id, 'voice'):
                 raise HTTPException(409,'Segretaria disattivata: usare la linea operatore')
             # Caller ID is not an authenticated customer identity. A fresh voice
             # conversation can book but cannot inspect or mutate prior customers.
             conv = db.execute("INSERT INTO conversations(organization_id,channel,external_id,updated_at) VALUES (?,'voice',?,?)",(org_id,cid,now)).lastrowid
-            db.execute('INSERT INTO voice_calls(id,organization_id,route_id,conversation_id,created_at) VALUES (?,?,?,?,?)',(cid,org_id,data.route_id,conv,now))
+            db.execute('INSERT INTO voice_calls(id,organization_id,route_id,conversation_id,created_at,automation_revision) VALUES (?,?,?,?,?,?)',(cid,org_id,data.route_id,conv,now,policy(db,org_id,'voice')['revision']))
         return {'call_id':cid}
     @router.get('/internal/voice/calls/{call_id}', dependencies=[Depends(service_auth)])
     def call_state(call_id: str):
@@ -157,8 +158,13 @@ class VoiceService:
             if not text: return
             with self.database(write=True,organization_id=call['organization_id']) as db:
                 db.execute("INSERT INTO messages(organization_id,conversation_id,direction,body,created_at,external_id) VALUES (?,?,'inbound',?,?,?)",(call['organization_id'],call['conversation_id'],text[:4000],int(time.time()),f'voice:{cid}:in:{number}'))
-            result=await self.responder(self.database,call['organization_id'],text,conversation_id=call['conversation_id'])
+            result=await self.responder(self.database,call['organization_id'],text,conversation_id=call['conversation_id'],policy_revision=call['automation_revision'])
+            if result['mode']=='paused':
+                status('human');writer.close();return
             with self.database(write=True,organization_id=call['organization_id']) as db:
+                from app.channel_controls import permitted
+                if not permitted(db,call['organization_id'],'voice',call['automation_revision']):
+                    db.execute("UPDATE voice_calls SET status='human' WHERE id=?",(cid,));writer.close();return
                 db.execute("INSERT INTO messages(organization_id,conversation_id,direction,body,created_at,delivery_status,external_id) VALUES (?,?,'outbound',?,?,'sent',?)",(call['organization_id'],call['conversation_id'],result['reply'][:4000],int(time.time()),f'voice:{cid}:out:{number}'))
             output=spawn(play(result['reply'][:800]))
             await output
@@ -171,12 +177,19 @@ class VoiceService:
             with self.database(write=True) as db:
                 call=db.execute('SELECT c.*,r.greeting FROM voice_calls c JOIN voice_routes r ON r.id=c.route_id WHERE c.id=? AND c.status=\'created\' AND c.created_at>?',(cid,int(time.time())-60)).fetchone()
                 if not call: raise ValueError('Unknown or expired call')
+                from app.channel_controls import permitted
+                if not permitted(db,call['organization_id'],'voice',call['automation_revision']):raise ValueError('Automatic responses paused')
                 if db.execute("UPDATE voice_calls SET status='active' WHERE id=? AND status='created'",(cid,)).rowcount!=1: raise ValueError('Call already attached')
             async def meter_call():
                 nonlocal charged
                 from app.billing import consume
                 started=time.monotonic()
                 while not writer.is_closing():
+                    with self.database() as db:
+                        active=permitted(db,call['organization_id'],'voice',call['automation_revision'])
+                        route=db.execute('SELECT enabled FROM voice_routes WHERE id=?',(call['route_id'],)).fetchone()
+                    if not active or not route or not route['enabled']:
+                        status('human');writer.close();return
                     seconds=max(1,math.ceil(time.monotonic()-started))
                     if seconds>charged:
                         try:consume(self.database,call['organization_id'],'voice_seconds',seconds-charged,f'voice:{cid}:seconds:{seconds}')

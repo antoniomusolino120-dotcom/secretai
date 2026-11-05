@@ -150,7 +150,9 @@ def enqueue_booking_automation(db,org_id,appointment_id,operation):
     """Called in the same transaction that reserves or mutates the local slot."""
     import hashlib
     row=db.execute('SELECT a.*,s.name AS service_name,s.automation_json FROM appointments a JOIN services s ON s.id=a.service_id AND s.organization_id=a.organization_id WHERE a.id=? AND a.organization_id=?',(appointment_id,org_id)).fetchone()
+    if row['destination'] in {'google','local'}:return False
     mapping=json.loads(row['automation_json']);pid=mapping.get(operation)
+    if row['destination']=='browser' and not mapping:raise HTTPException(409,'Configura le procedure del gestionale')
     if not mapping:return False
     if not pid:raise HTTPException(409,'Configura la procedura del gestionale per questa operazione')
     procedure=db.execute('SELECT * FROM browser_procedures WHERE id=? AND organization_id=? AND approved=1',(pid,org_id)).fetchone()

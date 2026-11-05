@@ -96,9 +96,24 @@ def enqueue(db, org_id, kind, payload, dedupe_key):
                (org_id, kind, json.dumps(payload), dedupe_key, int(time.time())))
 
 
+def destination(db, org_id, service_id):
+    target = db.execute('SELECT calendar_target FROM organizations WHERE id=?', (org_id,)).fetchone()['calendar_target']
+    google = bool(db.execute('SELECT 1 FROM google_connections WHERE organization_id=?', (org_id,)).fetchone())
+    service = db.execute('SELECT automation_json FROM services WHERE id=? AND organization_id=?', (service_id, org_id)).fetchone()
+    browser = bool(service and json.loads(service['automation_json']))
+    if target == 'auto': return 'browser' if browser else 'google' if google else 'local'
+    if target == 'google' and not google:
+        raise HTTPException(409, 'Collega Google Calendar prima di prenotare')
+    if target == 'browser' and not browser:
+        raise HTTPException(409, 'Configura e approva la procedura del gestionale per questo servizio')
+    return target
+
+
 def create_booking(database, data, user_id=None, key=None, conversation_id=None):
     payload = {"operation": "create", **data.model_dump(mode="json")}
     with database(write=True, organization_id=data.organization_id) as db:
+        from app.channel_controls import assert_current, current_policy
+        assert_current(db, data.organization_id)
         if conversation_id is not None:
             conversation = db.execute("SELECT status,contact_id FROM conversations WHERE id=? AND organization_id=?",
                                       (conversation_id, data.organization_id)).fetchone()
@@ -114,11 +129,12 @@ def create_booking(database, data, user_id=None, key=None, conversation_id=None)
                                              (data.contact_id, data.organization_id)).fetchone():
             raise HTTPException(404, "Cliente inesistente")
         intake,_=validate_answers(service_questions(db,data.organization_id,data.service_id),data.intake_answers)
-        google = db.execute("SELECT calendar_id FROM google_connections WHERE organization_id=?", (data.organization_id,)).fetchone()
+        target = destination(db, data.organization_id, data.service_id)
+        google = target == 'google'
         sync = "pending" if google else "local"
         status = "pending_sync" if google else "confirmed"
-        cur = db.execute("""INSERT INTO appointments(organization_id,customer,service_id,starts_at,ends_at,contact_id,status,sync_status,intake_json)
-            VALUES (?,?,?,?,?,?,?,?,?)""", (data.organization_id,data.customer,data.service_id,start.isoformat(),end.isoformat(),data.contact_id,status,sync,json.dumps(intake,ensure_ascii=False)))
+        cur = db.execute("""INSERT INTO appointments(organization_id,customer,service_id,starts_at,ends_at,contact_id,status,sync_status,intake_json,destination,created_by_ai)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (data.organization_id,data.customer,data.service_id,start.isoformat(),end.isoformat(),data.contact_id,status,sync,json.dumps(intake,ensure_ascii=False),target,int(conversation_id is not None or current_policy.get() is not None)))
         result = {"id": cur.lastrowid, "starts_at": start.isoformat(), "ends_at": end.isoformat(),
                   "status": status, "sync_status": sync, "management_code": management_code(data.organization_id,cur.lastrowid)}
         audit(db, "appointment.created", user_id, data.organization_id, cur.lastrowid)
@@ -136,13 +152,13 @@ def install(database, current_user, require_org):
     router = APIRouter(tags=["booking"])
 
     @router.get("/api/appointments")
-    def appointments(organization_id: int, include_cancelled: bool = False, user_id: int = Depends(current_user)):
+    def appointments(organization_id: int, include_cancelled: bool = False, ai_only: bool = False, user_id: int = Depends(current_user)):
         require_org(user_id, organization_id)
         with database() as db:
             return [dict(row) for row in db.execute("""SELECT a.*,s.name AS service FROM appointments a
                 JOIN services s ON s.id=a.service_id AND s.organization_id=a.organization_id
-                WHERE a.organization_id=? AND (?=1 OR a.status<>'cancelled') ORDER BY starts_at""",
-                (organization_id, int(include_cancelled)))]
+                WHERE a.organization_id=? AND (?=1 OR a.status<>'cancelled') AND (?=0 OR a.created_by_ai=1) ORDER BY starts_at DESC""",
+                (organization_id, int(include_cancelled), int(ai_only)))]
 
     @router.post("/api/appointments")
     def create(data: AppointmentRequest, user_id: int = Depends(current_user),
@@ -184,14 +200,17 @@ def mutate_booking(database,org_id,appointment_id,operation,starts_at=None,user_
     if operation not in {'reschedule','cancel'}: raise ValueError('Invalid operation')
     payload={'operation':operation,'id':appointment_id,'starts_at':starts_at.isoformat() if starts_at else None}
     with database(write=True,organization_id=org_id) as db:
+        from app.channel_controls import assert_current
+        assert_current(db, org_id)
         appointment=db.execute('SELECT * FROM appointments WHERE id=? AND organization_id=?',(appointment_id,org_id)).fetchone()
         if not appointment: raise HTTPException(404,'Appuntamento non trovato')
         if guard: guard(db,appointment)
         previous=replay(db,org_id,key,payload)
         if previous: return previous
         if appointment['status']=='cancelled': raise HTTPException(404,'Appuntamento non trovato')
-        google=bool(db.execute('SELECT 1 FROM google_connections WHERE organization_id=?',(org_id,)).fetchone())
-        service=db.execute('SELECT automation_json FROM services WHERE id=? AND organization_id=?',(appointment['service_id'],org_id)).fetchone()
+        google=bool(appointment['external_event_id']) or appointment['destination']=='google' or appointment['destination']=='auto' and bool(db.execute('SELECT 1 FROM google_connections WHERE organization_id=?',(org_id,)).fetchone())
+        service=dict(db.execute('SELECT automation_json FROM services WHERE id=? AND organization_id=?',(appointment['service_id'],org_id)).fetchone())
+        if appointment['destination'] in {'google','local'}:service['automation_json']='{}'
         if json.loads(service['automation_json']) and appointment['sync_status'] not in {'local','synced'}:
             raise HTTPException(409,'Verifica prima l’esito dell’operazione sul gestionale')
         if operation=='reschedule':

@@ -121,9 +121,11 @@ def install(database, current_user, require_org):
                 if unsupported or (conversation and conversation["status"] == "closed"):
                     db.execute("UPDATE conversations SET status='human' WHERE id=? AND organization_id=?", (cid, org_id))
                 db.execute("UPDATE conversations SET updated_at=?,identity_verified=1 WHERE id=? AND organization_id=?", (now, cid, org_id))
-                enabled = db.execute("SELECT assistant_enabled FROM organizations WHERE id=?", (org_id,)).fetchone()["assistant_enabled"]
+                from app.channel_controls import permitted, policy
+                revision = policy(db, org_id, provider)['revision']
+                enabled = permitted(db, org_id, provider)
                 if enabled and not unsupported and received > now-86400 and (not conversation or conversation["status"] == "ai"):
-                    enqueue(db, org_id, "ai_reply", {"message_id": message_id, "conversation_id": cid}, "ai:"+provider+":"+mid)
+                    enqueue(db, org_id, "ai_reply", {"message_id": message_id, "conversation_id": cid, "automation_revision": revision}, "ai:"+provider+":"+mid)
         # Delivery updates are authenticated by the same raw-body HMAC.
         for entry in objects(payload.get('entry')):
             for change in objects(entry.get('changes')):
@@ -199,6 +201,10 @@ def handlers(database):
             row = db.execute("""SELECT m.*,c.channel,c.external_id AS recipient FROM messages m JOIN conversations c
                 ON c.id=m.conversation_id AND c.organization_id=m.organization_id WHERE m.id=? AND m.organization_id=?""", (payload["message_id"], org_id)).fetchone()
             if not row or row["delivery_status"] == "sent":
+                return
+            from app.channel_controls import permitted
+            if (row['external_id'] or '').startswith('ai:') and not permitted(db, org_id, row['channel'], payload.get('automation_revision', 0)):
+                db.execute("UPDATE messages SET delivery_status='suppressed' WHERE id=? AND organization_id=?", (row['id'], org_id))
                 return
             credentials = db.execute("SELECT * FROM channel_credentials WHERE organization_id=? AND provider=?", (org_id, row["channel"])).fetchone()
             channel = db.execute("SELECT external_id FROM meta_channels WHERE organization_id=? AND provider=?", (org_id, row["channel"])).fetchone()

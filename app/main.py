@@ -82,3 +82,6 @@ def integrations(organization_id: int, user_id: int = Depends(current_user)):
             "telephony": {"configured": bool(os.getenv("SECRET_AI_INTERNAL_TOKEN") and os.getenv("PIPER_MODEL")), "implemented": True},
             "billing": {"configured": bool(os.getenv("STRIPE_SECRET_KEY") and os.getenv("STRIPE_WEBHOOK_SECRET") and os.getenv("SECRET_AI_PLANS_JSON"))},
             "computer_use": {"configured": bool(os.getenv("BROWSER_WORKER_URL") and os.getenv("BROWSER_ALLOWED_ORIGINS")), "implemented": True}}
+
+from app.channel_controls import install as install_controls
+app.include_router(install_controls(database, current_user, require_org))

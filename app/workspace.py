@@ -218,6 +218,25 @@ def install(database, current_user, require_org):
                 FROM conversations c LEFT JOIN contacts p ON p.id=c.contact_id AND p.organization_id=c.organization_id
                 WHERE c.organization_id=? ORDER BY c.updated_at DESC,c.id DESC LIMIT 100""", (organization_id,))]
 
+    @router.get('/api/conversations/{conversation_id}/operations')
+    def conversation_operations(conversation_id: int, organization_id: int, user_id: int = Depends(current_user)):
+        require_org(user_id, organization_id)
+        with database() as db:
+            if not db.execute('SELECT 1 FROM conversations WHERE id=? AND organization_id=?', (conversation_id, organization_id)).fetchone():
+                raise HTTPException(404, 'Conversazione inesistente')
+            rows = db.execute('''SELECT payload_json,result_json FROM booking_proposals
+                WHERE organization_id=? AND conversation_id=? AND result_json IS NOT NULL
+                ORDER BY created_at''', (organization_id, conversation_id)).fetchall()
+        result = []
+        for row in rows:
+            payload, output = json.loads(row['payload_json']), json.loads(row['result_json'])
+            appointment = output.get('appointment', {})
+            if appointment.get('id'):
+                operation = payload.get('operation', 'create')
+                result.append({'appointment_id': appointment['id'], 'operation': operation,
+                               'label': {'create': 'Prenotazione registrata', 'reschedule': 'Spostamento registrato', 'cancel': 'Cancellazione registrata'}[operation]})
+        return result
+
     @router.post("/api/conversations")
     def create_conversation(data: Conversation, user_id: int = Depends(current_user)):
         require_org(user_id, data.organization_id)

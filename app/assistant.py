@@ -133,6 +133,7 @@ def confirm(database, org_id, pid, conversation_id=None, user_id=None):
         if code: reply += " Conserva il codice gestione per modifiche o cancellazioni: "+code+"."
     output = {"reply": reply, "mode": "booking_result", "appointment": result}
     with database(write=True, organization_id=org_id) as db:
+        if not payload.get('operation'):db.execute('UPDATE appointments SET created_by_ai=1 WHERE id=? AND organization_id=?',(result['id'],org_id))
         db.execute("UPDATE booking_proposals SET result_json=? WHERE id=? AND organization_id=?", (json.dumps(output), pid, org_id))
     return output
 
@@ -164,7 +165,29 @@ def propose_change(database,org,args,cid,uid):
     return {'proposal_id':pid,'mode':'proposal','reply':f"Proposta di {'cancellazione' if args.operation=='cancel' else 'spostamento'} per appuntamento {args.appointment_id}. Scrivi CONFERMO per procedere."}
 
 
-async def respond(database, org_id, message, conversation_id=None, user_id=None):
+async def respond(database, org_id, message, conversation_id=None, user_id=None, policy_revision=None):
+    from app.channel_controls import current_policy, permitted, policy
+    with database() as db:
+        channel = 'web'
+        if conversation_id:
+            conv = db.execute('SELECT channel FROM conversations WHERE id=? AND organization_id=?', (conversation_id, org_id)).fetchone()
+            if not conv: raise HTTPException(404, 'Conversazione inesistente')
+            channel = conv['channel']
+        revision = policy(db, org_id, channel)['revision']
+        if not permitted(db, org_id, channel, revision) or policy_revision is not None and policy_revision != revision:
+            return {'mode': 'paused', 'reply': ''}
+    token = current_policy.set((org_id, channel, revision))
+    try:
+        result = await _respond(database, org_id, message, conversation_id, user_id)
+        with database() as db:
+            if not permitted(db, org_id, channel, revision):
+                return {'mode': 'paused', 'reply': ''}
+        return result
+    finally:
+        current_policy.reset(token)
+
+
+async def _respond(database, org_id, message, conversation_id=None, user_id=None):
     normalized=re.sub(r'[^\w\s]','',message.casefold()).strip()
     with database() as db:
         org=db.execute('SELECT * FROM organizations WHERE id=?',(org_id,)).fetchone()
@@ -259,6 +282,8 @@ async def respond(database, org_id, message, conversation_id=None, user_id=None)
                 with database(write=True,organization_id=org_id) as db:db.execute("UPDATE conversations SET status='human' WHERE id=? AND organization_id=?",(conversation_id,org_id))
             return {'mode':'offline','reply':'La segretaria AI è momentaneamente indisponibile. La richiesta necessita di un operatore.'}
     try:
+        from app.channel_controls import assert_current
+        with database() as db: assert_current(db, org_id)
         if name=='greet':return {'mode':'tool','reply':f'Buongiorno, sono la segretaria virtuale di {org["name"]}. Come posso aiutarti?'}
         if name=='ask_details':return details_reply(DetailsInput.model_validate(args).needed,services,selected)
         if name=='service_info':
@@ -334,9 +359,12 @@ def handlers(database):
         org_id, cid = job["organization_id"], payload["conversation_id"]
         with database() as db:
             row = db.execute("SELECT body FROM messages WHERE id=? AND organization_id=? AND conversation_id=? AND direction='inbound'", (payload["message_id"], org_id, cid)).fetchone()
-            org = db.execute("SELECT assistant_enabled FROM organizations WHERE id=?", (org_id,)).fetchone()
+            from app.channel_controls import permitted, policy
+            conv = db.execute('SELECT channel FROM conversations WHERE id=? AND organization_id=?', (cid, org_id)).fetchone()
+            revision = policy(db, org_id, conv['channel'])['revision'] if conv else None
+            active = conv and permitted(db, org_id, conv['channel'], payload.get('automation_revision', 0))
             existing = db.execute("SELECT 1 FROM idempotency_keys WHERE organization_id=? AND key=?", (org_id, "ai-output:"+str(payload["message_id"]))).fetchone()
-        if existing or not row or not org["assistant_enabled"]:
+        if existing or not row or not active:
             return
         from app.billing import consume
         try:
@@ -345,9 +373,11 @@ def handlers(database):
             with database(write=True, organization_id=org_id) as db:
                 db.execute("UPDATE conversations SET status='human' WHERE id=? AND organization_id=?", (cid, org_id))
             return
-        result = await respond(database, org_id, row["body"], conversation_id=cid)
+        result = await respond(database, org_id, row["body"], conversation_id=cid, policy_revision=revision)
         with database(write=True, organization_id=org_id) as db:
             current = db.execute("SELECT status FROM conversations WHERE id=? AND organization_id=?", (cid, org_id)).fetchone()
+            if result['mode'] == 'paused' or not permitted(db, org_id, conv['channel'], revision):
+                return
             # A manual handoff always wins over an in-flight model request.
             if current["status"] != "ai" and result["mode"] not in {"human", "offline"}:
                 return
@@ -355,7 +385,7 @@ def handlers(database):
                 return
             mid = db.execute("INSERT INTO messages(organization_id,conversation_id,direction,body,created_at,delivery_status,external_id) VALUES (?,?,'outbound',?,?,'pending',?)",
                 (org_id, cid, result["reply"][:4000], int(time.time()), "ai:"+str(payload["message_id"]))).lastrowid
-            enqueue(db, org_id, "meta_send", {"message_id": mid}, f"meta:ai:{payload['message_id']}")
+            enqueue(db, org_id, "meta_send", {"message_id": mid, "automation_revision": revision}, f"meta:ai:{payload['message_id']}")
             db.execute("INSERT INTO idempotency_keys VALUES (?,?,?,?,?)",
                        (org_id, "ai-output:"+str(payload["message_id"]), "ai-output", json.dumps({"message_id": mid}), int(time.time())))
     return {"ai_reply": reply}

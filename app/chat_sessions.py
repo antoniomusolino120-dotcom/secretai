@@ -33,6 +33,9 @@ async def web_turn(database,data,uid,key,responder):
         if not conv:raise HTTPException(404,'Conversazione web inesistente')
         if conv['status']!='ai':raise HTTPException(409,'Riattiva la conversazione AI dall’inbox per continuare')
         cid=conv['id']
+        from app.channel_controls import permitted, policy
+        revision=policy(db,org,'web')['revision']
+        if not permitted(db,org,'web'):raise HTTPException(409,'Chat di prova disattivata o fuori orario')
         db.execute("UPDATE chat_turns SET status='interrupted' WHERE organization_id=? AND conversation_id=? AND status='running' AND created_at<?",(org,cid,now-120))
         if db.execute("SELECT 1 FROM chat_turns WHERE organization_id=? AND conversation_id=? AND status='running'",(org,cid)).fetchone():raise HTTPException(409,'Attendi la risposta al messaggio precedente')
         db.execute('INSERT INTO chat_turns(organization_id,user_id,request_key,conversation_id,request_hash,created_at) VALUES (?,?,?,?,?,?)',(org,uid,key,cid,fingerprint,now))
@@ -40,7 +43,7 @@ async def web_turn(database,data,uid,key,responder):
     try:
         from app.billing import consume
         consume(database,org,'messages',1,f'web:{uid}:{key}')
-        result=await responder(database,org,data.message,conversation_id=cid,user_id=uid)
+        result=await responder(database,org,data.message,conversation_id=cid,user_id=uid,policy_revision=revision)
     except BaseException:
         with database(write=True,organization_id=org) as db:db.execute("UPDATE chat_turns SET status='interrupted' WHERE organization_id=? AND user_id=? AND request_key=?",(org,uid,key))
         raise
@@ -48,9 +51,10 @@ async def web_turn(database,data,uid,key,responder):
         current=db.execute('SELECT status FROM conversations WHERE id=? AND organization_id=?',(cid,org)).fetchone()
         turn=db.execute('SELECT status FROM chat_turns WHERE organization_id=? AND user_id=? AND request_key=?',(org,uid,key)).fetchone()
         if turn['status']!='running':raise HTTPException(409,'Risposta scaduta; aggiorna la conversazione')
-        if current['status']!='ai' and result['mode'] not in {'human','offline'}:result={'mode':'human','reply':'Conversazione presa in carico da un operatore. Controlla l’agenda per eventuali operazioni.'}
+        if not permitted(db,org,'web',revision):result={'mode':'paused','reply':''}
+        if current['status']!='ai' and result['mode'] not in {'human','offline','paused'}:result={'mode':'human','reply':'Conversazione presa in carico da un operatore. Controlla l’agenda per eventuali operazioni.'}
         result={**result,'conversation_id':cid}
-        db.execute("INSERT INTO messages(organization_id,conversation_id,direction,body,created_at,delivery_status) VALUES (?,?,'outbound',?,?,'sent')",(org,cid,result['reply'],int(time.time())))
+        if result['mode'] != 'paused':db.execute("INSERT INTO messages(organization_id,conversation_id,direction,body,created_at,delivery_status) VALUES (?,?,'outbound',?,?,'sent')",(org,cid,result['reply'],int(time.time())))
         db.execute("UPDATE chat_turns SET status='done',response_json=? WHERE organization_id=? AND user_id=? AND request_key=?",(json.dumps(result),org,uid,key))
         db.execute('UPDATE conversations SET updated_at=? WHERE id=? AND organization_id=?',(int(time.time()),cid,org))
     return result
