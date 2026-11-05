@@ -22,9 +22,15 @@ actions['channel-configure']=channel=>{
  dialog((p.enabled&&p.connected?'Configura ':'Attiva ')+channelNames[channel],channelConfiguration(channel,p));
 };
 actions['channel-connect']=async channel=>{
+ const p=state.automation.channels[channel];
+ // A newly connected account must stay off until the owner explicitly enables it.
+ if(!p.connected){
+  const form=$('#dialog .channel-schedule');
+  await send(controlPath()+'/'+channel,form?scheduleValue(form,false):{enabled:false,all_day:p.all_day,start_time:p.start_time,end_time:p.end_time,days:p.days},'PUT');
+ }
  $('#dialog').close();
  if(channel==='voice')return navigate('voice');
- if(state.automation.channels[channel].connected)return actions['channel-manage'](channel);
+ if(p.connected)return actions['channel-manage'](channel);
  return actions['meta-oauth'](channel);
 };
 
