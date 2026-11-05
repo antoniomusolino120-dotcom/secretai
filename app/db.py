@@ -63,10 +63,12 @@ def initialize(engine):
 
 
 class Result:
-    def __init__(self, result, returned_id=False):
+    def __init__(self, result, returned_id=False, sqlite_insert=False):
         self.result = result
         self.rowcount = result.rowcount
-        self.lastrowid = result.scalar() if returned_id else getattr(result, "lastrowid", None)
+        # psycopg does not expose DBAPI lastrowid, including on SELECT/DDL.
+        # PostgreSQL IDs are read exclusively through INSERT ... RETURNING.
+        self.lastrowid = result.scalar() if returned_id else (result.lastrowid if sqlite_insert else None)
 
     def fetchone(self):
         return self.result.mappings().fetchone()
@@ -104,7 +106,8 @@ class Database:
                      and match.group(1).lower() in ID_TABLES and "RETURNING" not in sql.upper())
         if returning:
             sql += " RETURNING id"
-        return Result(self.connection.execute(text(sql), values), returning)
+        return Result(self.connection.execute(text(sql), values), returning,
+                      sqlite_insert=self.dialect == "sqlite" and match is not None)
 
     def executescript(self, script):
         # Legacy tests may create already-existing tables. Application DDL lives

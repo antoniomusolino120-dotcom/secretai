@@ -49,8 +49,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 response = await call_next(request)
         except ValueError:
             response = JSONResponse({"detail": "Richiesta non valida"}, status_code=400)
-        except SQLAlchemyError:
-            log.error(json.dumps({"event": "database_error", "request_id": request_id}))
+        except SQLAlchemyError as error:
+            log.error(json.dumps({"event": "database_error", "request_id": request_id,
+                                  "error_type": type(error).__name__,
+                                  "sqlstate": getattr(getattr(error, "orig", None), "sqlstate", None)}))
             response = JSONResponse({"detail": "Servizio temporaneamente non disponibile", "request_id": request_id}, status_code=503)
         response.headers.update({"X-Request-ID": request_id, "X-Content-Type-Options": "nosniff",
                                  "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
