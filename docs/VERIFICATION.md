@@ -12,7 +12,18 @@
 
 ## Prove remote già acquisite
 
-Sul primo commit del runtime `7e9fe59a075b347dd002d8e38e19e46f15815fcc` sono passati test backend, PostgreSQL, Chromium e backup/ripristino PostgreSQL + import SQLite. La build API, browser e voice è passata; la prima build Asterisk ha rilevato l’assenza del pacchetto nella distribuzione scelta, poi corretta usando Ubuntu 24.04. L’esito finale delle immagini e del runtime Asterisk viene verificato prima del merge.
+Sul commit applicativo `14a04556429eb6141525c48adffc851296d78087` sono verdi tutti gli otto controlli GitHub Actions (push e pull request):
+
+- test unitari;
+- PostgreSQL 16: 43 test superati, con il solo test Chromium eseguito nel job dedicato;
+- backup cifrato/ripristino PostgreSQL e importazione read-only da SQLite, incluse le sequenze;
+- Chromium desktop/mobile e registrazione/replay del gestionale;
+- build delle immagini API, browser, voce e Asterisk;
+- avvio Asterisk senza rete: modulo AudioSocket e dialplan inbound verificati.
+
+La verifica iniziale ha rilevato e corretto la distribuzione del pacchetto Asterisk e il percorso multiarch del suo modulo audio. Il codice verificato include il conteggio dei secondi di chiamata sul tempo effettivamente trascorso, comprese le pause.
+
+Le prove remote sono consultabili nella [pull request #2](https://github.com/antoniomusolino120-dotcom/secretai/pull/2/checks). Gli aggiornamenti successivi a questo rapporto riguardano soltanto la documentazione.
 
 ## Confini della verifica
 
