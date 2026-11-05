@@ -1,0 +1,7 @@
+{$SECRET_AI_DOMAIN:localhost} {
+    request_body {
+        max_size 1MB
+    }
+    encode zstd gzip
+    reverse_proxy api:8000
+}

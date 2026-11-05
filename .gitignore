@@ -1,4 +1,10 @@
 .venv/
+*.sqlite3
+*.sqlite3-*
+*.db-*
+backups/
+test-results/
+playwright-report/
 __pycache__/
 *.pyc
 .env

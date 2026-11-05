@@ -1,161 +1,183 @@
-"""Google Calendar OAuth and free/busy integration.
-
-Credentials are supplied by the deployment operator. Tokens are encrypted at rest.
-"""
+"""Google OAuth and calendar adapter. Local reservations stay pending until verified."""
 import base64
 import hashlib
-import hmac
 import json
 import os
 import secrets
 import time
-from datetime import datetime, timezone
-from urllib.parse import urlencode
+from datetime import datetime
+from urllib.parse import urlencode, quote
 
 import httpx
-from cryptography.fernet import Fernet, InvalidToken
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
+
+from app.auth import audit
+from app.booking import utc
+from app.secrets import cipher, encrypt, decrypt
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 CALENDAR_URL = "https://www.googleapis.com/calendar/v3"
 SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly"
 
+
+def config():
+    values = [os.getenv(k) for k in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI")]
+    if not all(values):
+        raise HTTPException(503, "Google Calendar non configurato")
+    cipher()
+    return values
+
+
+async def access_token(database, org_id):
+    client_id, client_secret, _ = config()
+    with database() as db:
+        row = db.execute("SELECT token_ciphertext FROM google_connections WHERE organization_id=?", (org_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Calendario non collegato")
+    refresh = decrypt(row["token_ciphertext"])
+    async with httpx.AsyncClient(timeout=20) as client:
+        try:
+            response = await client.post(TOKEN_URL, data={"client_id": client_id, "client_secret": client_secret,
+                "refresh_token": refresh, "grant_type": "refresh_token"})
+            response.raise_for_status()
+            result = response.json()
+            token = result["access_token"]
+        except (httpx.HTTPError, ValueError, KeyError):
+            raise HTTPException(502, "Aggiornamento token Google non riuscito; verifica il collegamento")
+    if result.get("refresh_token"):
+        with database(write=True, organization_id=org_id) as db:
+            db.execute("UPDATE google_connections SET token_ciphertext=? WHERE organization_id=? AND token_ciphertext=?",
+                       (encrypt(result["refresh_token"]), org_id, row["token_ciphertext"]))
+    return token
+
+
+async def google_request(client, method, path, token, **kwargs):
+    try:
+        response = await client.request(method, CALENDAR_URL + path,
+                                        headers={"Authorization": "Bearer " + token, **kwargs.pop("headers", {})}, **kwargs)
+        response.raise_for_status()
+        return response.json() if response.content else {}
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, "Google Calendar non disponibile")
+
+
 class Availability(BaseModel):
     organization_id: int = Field(gt=0)
     starts_at: datetime
     ends_at: datetime
 
+
+class CalendarSelection(BaseModel):
+    write_calendar_id: str = Field(min_length=1, max_length=500)
+    read_calendar_ids: list[str] = Field(min_length=1, max_length=20)
+
+
 def install(database, current_user, require_org):
-    router = APIRouter()
-
-    def setup(db):
-        db.executescript("""
-        CREATE TABLE IF NOT EXISTS google_connections (
-          organization_id INTEGER PRIMARY KEY,
-          token_ciphertext TEXT NOT NULL,
-          calendar_id TEXT NOT NULL DEFAULT 'primary');
-        CREATE TABLE IF NOT EXISTS google_oauth_states (
-          state_hash TEXT PRIMARY KEY,
-          organization_id INTEGER NOT NULL,
-          user_id INTEGER NOT NULL,
-          expires_at INTEGER NOT NULL);
-        """)
-
-    def config():
-        client_id = os.getenv("GOOGLE_CLIENT_ID")
-        client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-        redirect = os.getenv("GOOGLE_REDIRECT_URI")
-        key = os.getenv("SECRET_AI_ENCRYPTION_KEY")
-        if not all((client_id, client_secret, redirect, key)):
-            raise HTTPException(503, "Google Calendar non configurato")
-        try:
-            cipher = Fernet(key.encode())
-        except (ValueError, TypeError):
-            raise HTTPException(503, "Chiave cifratura non valida")
-        return client_id, client_secret, redirect, cipher
+    router = APIRouter(tags=["google"])
 
     @router.post("/api/google/connect")
     def connect(organization_id: int, user_id: int = Depends(current_user)):
-        require_org(user_id, organization_id)
-        client_id, _, redirect, _ = config()
-        state = secrets.token_urlsafe(40)
-        with database() as db:
-            setup(db)
-            db.execute("DELETE FROM google_oauth_states WHERE expires_at<?", (int(time.time()),))
-            db.execute("INSERT INTO google_oauth_states VALUES (?,?,?,?)",
-                       (hashlib.sha256(state.encode()).hexdigest(), organization_id, user_id, int(time.time())+600))
-        query = urlencode({"client_id": client_id, "redirect_uri": redirect,
-                           "response_type": "code", "scope": SCOPES,
-                           "access_type": "offline", "prompt": "consent",
-                           "state": state})
+        require_org(user_id, organization_id, owner=True)
+        client_id, _, redirect = config()
+        state, verifier = secrets.token_urlsafe(40), secrets.token_urlsafe(48)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        with database(write=True, organization_id=organization_id) as db:
+            db.execute("DELETE FROM google_oauth_states WHERE expires_at<=? OR (organization_id=? AND user_id=?)", (int(time.time()), organization_id, user_id))
+            db.execute("INSERT INTO google_oauth_states(state_hash,organization_id,user_id,expires_at,verifier_ciphertext) VALUES (?,?,?,?,?)",
+                       (hashlib.sha256(state.encode()).hexdigest(), organization_id, user_id, int(time.time())+600, encrypt(verifier)))
+        query = urlencode({"client_id": client_id, "redirect_uri": redirect, "response_type": "code", "scope": SCOPES,
+                           "access_type": "offline", "prompt": "consent", "state": state,
+                           "code_challenge": challenge, "code_challenge_method": "S256"})
         return {"authorization_url": AUTH_URL+"?"+query}
 
     @router.get("/api/google/callback")
-    async def callback(state: str, code: str):
-        client_id, client_secret, redirect, cipher = config()
+    async def callback(request: Request, state: str, code: str, user_id: int = Depends(current_user)):
+        client_id, client_secret, redirect = config()
         digest = hashlib.sha256(state.encode()).hexdigest()
-        with database() as db:
-            setup(db)
-            db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT * FROM google_oauth_states WHERE state_hash=? AND expires_at>?",
-                             (digest, int(time.time()))).fetchone()
+        with database(write=True) as db:
+            row = db.execute("SELECT * FROM google_oauth_states WHERE state_hash=? AND user_id=? AND expires_at>?",
+                             (digest, user_id, int(time.time()))).fetchone()
             if not row:
                 raise HTTPException(403, "OAuth state non valido o scaduto")
-            db.execute("DELETE FROM google_oauth_states WHERE state_hash=?", (digest,))
-            organization_id = row["organization_id"]
+            deleted = db.execute("DELETE FROM google_oauth_states WHERE state_hash=?", (digest,))
+            if deleted.rowcount != 1:
+                raise HTTPException(403, "OAuth state già utilizzato")
+            org_id = row["organization_id"]
+        require_org(user_id, org_id, owner=True)
         async with httpx.AsyncClient(timeout=20) as client:
             try:
-                response = await client.post(TOKEN_URL, data={
-                    "code": code, "client_id": client_id, "client_secret": client_secret,
-                    "redirect_uri": redirect, "grant_type": "authorization_code"})
+                response = await client.post(TOKEN_URL, data={"code": code, "client_id": client_id,
+                    "client_secret": client_secret, "redirect_uri": redirect, "grant_type": "authorization_code",
+                    "code_verifier": decrypt(row["verifier_ciphertext"])})
                 response.raise_for_status()
                 tokens = response.json()
             except (httpx.HTTPError, ValueError):
-                raise HTTPException(502, "Scambio OAuth non riuscito")
-        refresh = tokens.get("refresh_token")
-        if not refresh:
-            raise HTTPException(422, "Google non ha restituito un refresh token")
-        encrypted = cipher.encrypt(refresh.encode()).decode()
-        with database() as db:
-            setup(db)
-            db.execute("""INSERT INTO google_connections(organization_id,token_ciphertext)
-                VALUES (?,?) ON CONFLICT(organization_id) DO UPDATE SET token_ciphertext=excluded.token_ciphertext""",
-                (organization_id, encrypted))
-        return {"connected": True, "organization_id": organization_id}
+                raise HTTPException(502, "Scambio OAuth non riuscito; ricollega il calendario")
+        if not tokens.get("refresh_token"):
+            raise HTTPException(422, "Google non ha restituito un refresh token; ripeti il consenso")
+        with database(write=True, organization_id=org_id) as db:
+            db.execute("""INSERT INTO google_connections(organization_id,token_ciphertext) VALUES (?,?)
+                ON CONFLICT(organization_id) DO UPDATE SET token_ciphertext=excluded.token_ciphertext""",
+                       (org_id, encrypt(tokens["refresh_token"])))
+            audit(db, "google.connected", user_id, org_id, org_id)
+        if "text/html" in request.headers.get("accept", ""):
+            return RedirectResponse("/#connections", status_code=303)
+        return {"connected": True, "organization_id": org_id}
 
-    async def access_token(org_id):
-        client_id, client_secret, _, cipher = config()
-        with database() as db:
-            setup(db)
-            row = db.execute("SELECT token_ciphertext FROM google_connections WHERE organization_id=?",
-                             (org_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, "Calendario non collegato")
-        try:
-            refresh = cipher.decrypt(row["token_ciphertext"].encode()).decode()
-        except InvalidToken:
-            raise HTTPException(503, "Credenziali Google non decifrabili")
+    @router.get("/api/google/calendars")
+    async def calendars(organization_id: int, user_id: int = Depends(current_user)):
+        require_org(user_id, organization_id, owner=True)
+        token = await access_token(database, organization_id)
         async with httpx.AsyncClient(timeout=20) as client:
-            try:
-                response = await client.post(TOKEN_URL, data={
-                    "client_id": client_id, "client_secret": client_secret,
-                    "refresh_token": refresh, "grant_type": "refresh_token"})
-                response.raise_for_status()
-                return response.json()["access_token"]
-            except (httpx.HTTPError, ValueError, KeyError):
-                raise HTTPException(502, "Aggiornamento token Google non riuscito")
+            data = await google_request(client, "GET", "/users/me/calendarList", token, params={"maxResults": 250})
+        return [{k: item.get(k) for k in ("id", "summary", "timeZone", "accessRole", "primary")} for item in data.get("items", [])]
+
+    @router.put("/api/google/calendars")
+    async def select_calendars(organization_id: int, data: CalendarSelection, user_id: int = Depends(current_user)):
+        require_org(user_id, organization_id, owner=True)
+        token = await access_token(database, organization_id)
+        async with httpx.AsyncClient(timeout=20) as client:
+            info = await google_request(client, "GET", "/users/me/calendarList/" + quote(data.write_calendar_id, safe=""), token)
+            if info.get("accessRole") not in {"owner", "writer"}:
+                raise HTTPException(422, "Seleziona un calendario scrivibile")
+        read_ids = list(dict.fromkeys([data.write_calendar_id, *data.read_calendar_ids]))
+        with database(write=True, organization_id=organization_id) as db:
+            if db.execute("SELECT 1 FROM appointments WHERE organization_id=? AND external_event_id IS NOT NULL AND status<>'cancelled' LIMIT 1", (organization_id,)).fetchone():
+                raise HTTPException(409, "Calendario di scrittura bloccato finché ci sono appuntamenti sincronizzati")
+            db.execute("UPDATE google_connections SET calendar_id=?,read_calendar_ids_json=? WHERE organization_id=?",
+                       (data.write_calendar_id, json.dumps(read_ids), organization_id))
+            audit(db, "google.calendars_selected", user_id, organization_id, organization_id)
+        return {"ok": True}
 
     @router.post("/api/google/freebusy")
     async def freebusy(data: Availability, user_id: int = Depends(current_user)):
         require_org(user_id, data.organization_id)
-        if data.starts_at.tzinfo is None or data.ends_at.tzinfo is None or data.ends_at <= data.starts_at:
-            raise HTTPException(422, "Intervallo o fuso orario non valido")
-        token = await access_token(data.organization_id)
+        start, end = utc(data.starts_at), utc(data.ends_at)
+        if end <= start:
+            raise HTTPException(422, "Intervallo non valido")
+        token = await access_token(database, data.organization_id)
         with database() as db:
-            row = db.execute("SELECT calendar_id FROM google_connections WHERE organization_id=?",
-                             (data.organization_id,)).fetchone()
-        calendar_id = row["calendar_id"]
+            row = db.execute("SELECT read_calendar_ids_json FROM google_connections WHERE organization_id=?", (data.organization_id,)).fetchone()
+        ids = json.loads(row["read_calendar_ids_json"])
         async with httpx.AsyncClient(timeout=20) as client:
-            try:
-                response = await client.post(CALENDAR_URL+"/freeBusy",
-                    headers={"Authorization": "Bearer "+token},
-                    json={"timeMin": data.starts_at.isoformat(), "timeMax": data.ends_at.isoformat(),
-                          "items": [{"id": calendar_id}]})
-                response.raise_for_status()
-                calendar = response.json()["calendars"][calendar_id]
-                if calendar.get("errors"):
-                    raise HTTPException(502, "Errore disponibilità Google")
-                return {"available": not bool(calendar.get("busy")), "busy": calendar.get("busy", [])}
-            except (httpx.HTTPError, KeyError, ValueError):
-                raise HTTPException(502, "Google Calendar non disponibile")
+            result = await google_request(client, "POST", "/freeBusy", token, json={"timeMin": start.isoformat(), "timeMax": end.isoformat(), "items": [{"id": i} for i in ids]})
+        calendars = result.get("calendars", {})
+        if any(i not in calendars or calendars[i].get("errors") for i in ids):
+            raise HTTPException(502, "Impossibile verificare tutti i calendari")
+        busy = [interval for i in ids for interval in calendars[i].get("busy", [])]
+        return {"available": not busy, "busy": busy}
 
     @router.delete("/api/google/connection")
     def disconnect(organization_id: int, user_id: int = Depends(current_user)):
-        require_org(user_id, organization_id)
-        with database() as db:
-            setup(db)
+        require_org(user_id, organization_id, owner=True)
+        with database(write=True, organization_id=organization_id) as db:
+            if db.execute("SELECT 1 FROM appointments WHERE organization_id=? AND status<>'cancelled' AND sync_status<>'local' LIMIT 1", (organization_id,)).fetchone():
+                raise HTTPException(409, "Gestisci gli appuntamenti collegati prima di scollegare Google")
             db.execute("DELETE FROM google_connections WHERE organization_id=?", (organization_id,))
+            db.execute("DELETE FROM google_oauth_states WHERE organization_id=?", (organization_id,))
+            audit(db, "google.disconnected", user_id, organization_id, organization_id)
         return {"ok": True}
     return router
