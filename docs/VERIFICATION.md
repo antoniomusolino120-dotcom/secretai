@@ -1,5 +1,15 @@
 # Verifica — 5 novembre 2026
 
+## Aggiornamento: dashboard di controllo
+
+La nuova dashboard separa gli orari di risposta IA dagli orari prenotabili dell’attività, presenta interruttori per canale e la scelta Google/gestionale, e conserva Appuntamenti e Attività come storici da aprire. La prova Chromium esercita interruttori reali, persistenza degli orari notturni, scelta del calendario e lettura delle risposte e delle operazioni dell’IA. I dati di appuntamento della prova UI sono creati con le vere funzioni di proposta/conferma; non viene presentata come prova del modello.
+
+Le nuove prove backend coprono confini orari esclusivi, finestre oltre mezzanotte, cambio ora legale, autorizzazioni, OFF durante inferenza, blocco degli output in coda, mancata ripartenza di un turno precedente dopo OFF/ON, telefonia e destinazioni non collegate. Il collaudo remoto dell’ultima modifica è registrato nei workflow della relativa pull request; le verifiche sotto appartengono alla precedente tranche.
+
+La compilazione del container vocale e l’avvio Asterisk non certificano una conversazione vocale reale. I canali del titolare non sono stati collegati con questa modifica. Stripe resta escluso.
+
+---
+
 ## Modifica corrente: personalizzazione e conversazioni
 
 Sono stati ricostruiti e verificati sul codice attuale cataloghi dei tipi di appuntamento, descrizioni e nomi alternativi, domande preliminari, risposte negli appuntamenti, cronologia web e controlli sui dati delle proposte.

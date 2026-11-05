@@ -1,4 +1,15 @@
-# Stato: preparazione alle integrazioni
+# Stato: dashboard di controllo e preparazione alle integrazioni
+
+## Dashboard concordata con il titolare
+
+La pagina Controllo mostra soltanto interruttori e orari delle risposte per canale, scelta dello strumento di prenotazione e due sezioni inizialmente chiuse: Appuntamenti e Attività. Non propone una seconda agenda, una rubrica CRM o gestione manuale delle prenotazioni. Servizi e domande e Impostazioni IA restano accessibili per configurare la segretaria.
+
+Gli interruttori sono applicati dal backend a chat, ingressi Meta, worker, invio delle risposte automatiche e telefonia. Fasce anche notturne, giorni della settimana, tutto il giorno e fuso dell’attività sono indipendenti dagli orari prenotabili. OFF conserva le credenziali; i lavori della precedente configurazione non ripartono dopo OFF/ON. Email è indicata come non disponibile, senza simulare un collegamento.
+
+La scelta Google Calendar o altro strumento è conservata e applicata alle nuove prenotazioni. Le prenotazioni già create mantengono la destinazione originaria. La scelta di una destinazione non ancora collegata non può produrre una prenotazione locale spacciata per sincronizzata.
+
+La fase corrente resta il collaudo sui soli account del titolare. Apertura commerciale, collegamento autonomo degli account di altre aziende e Stripe sono successivi. Vedere `DASHBOARD_CONTROLS.md` per comportamento e limiti.
+
 
 ## Personalizzazione aggiunta
 
@@ -11,7 +22,7 @@ La preparazione comprende ora anche i moduli mancanti di telefonia e Computer Us
 | Area | Lavoro preparatorio implementato | Passaggio con accesso reale |
 | --- | --- | --- |
 | Backend | PostgreSQL, migrazioni, ruoli, sessioni/CSRF, outbox, concorrenza, idempotenza e audit | Creare l’ambiente dedicato autorizzato e applicare la configurazione |
-| Dashboard | CRM, inbox, agenda, servizi/prezzi/orari, segretaria, collegamenti, telefonia, dimostrazioni e procedure dei gestionali | Inserire i dati aziendali di prova e validare i flussi |
+| Dashboard | Controllo canali/orari, destinazione calendario, storici Appuntamenti e Attività, configurazione servizi/domande e procedure guidate | Inserire i dati aziendali di prova e validare i flussi |
 | AI | Servizi/knowledge base, disponibilità, proposte/conferma, spostamento/cancellazione, identificazione cliente e handoff | Eseguire la preparazione automatica del modello sul server scelto e validare conversazioni reali |
 | Google | OAuth/PKCE, token cifrato/rinnovo, più calendari, eventi, sincronizzazione incrementale, watch/rinnovo e conflitti | Credenziali Google Cloud, consenso e calendario di prova |
 | WhatsApp | Embedded Signup, verifica appartenenza WABA/numero, registrazione/subscription, webhook firmato, inbox, risposte e ricevute | App Meta/configurazione approvata, account Business e numero idoneo |
