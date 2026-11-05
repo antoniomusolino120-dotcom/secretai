@@ -12,16 +12,22 @@ from fastapi.staticfiles import StaticFiles
 from app.db import build_engine, initialize, make_database
 from app.auth import install as install_auth
 from app.http_security import SecurityMiddleware
-from app.config import validate
+from app.config import validate, on_vercel
 
 ROOT = Path(__file__).resolve().parent.parent
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
-validate()
-engine = build_engine()
-initialize(engine)
-database = make_database(engine)
+if on_vercel():
+    from app.serverless import ServerlessDatabase
+    runtime = ServerlessDatabase()
+    engine = None
+    database = runtime.database
+else:
+    validate()
+    engine = build_engine()
+    initialize(engine)
+    database = make_database(engine)
 app = FastAPI(title="SecretAI", version="0.2.0",
               docs_url=None if os.getenv("SECRET_AI_ENV") == "production" else "/docs",
               redoc_url=None,
@@ -47,7 +53,7 @@ def live():
 def ready():
     with database() as db:
         db.execute("SELECT 1").fetchone()
-    return {"status": "ok", "database": engine.dialect.name}
+        return {"status": "ok", "database": db.dialect}
 
 from app.assistant import install as install_assistant
 from app.billing import install as install_billing

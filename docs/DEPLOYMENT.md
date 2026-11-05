@@ -8,6 +8,20 @@ Il Compose incluso prepara database PostgreSQL, migrazioni, API e worker. Il pro
 
 La produzione richiede `SECRET_AI_ENV=production`, URL pubblico HTTPS, chiave di cifratura custodita, SMTP e credenziali esterne autorizzate. Il database deve essere già migrato (`alembic upgrade head`); il processo API non esegue DDL in produzione. Le sessioni browser usano cookie Secure. Caddy limita il body a 1 MB, termina HTTPS e inoltra l'IP; Uvicorn si fida solo dell'indirizzo Caddy configurato nel network Compose. Non abilitare access log che contengano query OAuth, token o contenuti personali.
 
+## Avvio su Vercel
+
+Vercel non deve usare il database SQLite locale del repository o un database temporaneo in `/tmp`. Il deployment del 5 novembre falliva con `sqlite3.OperationalError: unable to open database file` durante `PRAGMA journal_mode=WAL`, prima di poter servire anche i file statici. Il progetto non aveva variabili d’ambiente né database collegati.
+
+Il runtime Vercel avvia la connessione soltanto quando serve alle API. Legge `SECRET_AI_DATABASE_URL` oppure, sul solo Vercel, `DATABASE_URL` o `POSTGRES_URL` forniti dall’integrazione del database dedicato. SQLite è rifiutato sul serverless. Le dipendenze installate da `requirements.txt` usano lo stesso lock verificato nei container.
+
+Con database mancante o non raggiungibile, la pagina e gli asset rimangono disponibili; `/health/ready` e le operazioni dipendenti dal database restituiscono 503. La dashboard mostra l’errore di configurazione prima del login. Non vengono creati account o appuntamenti in una memoria temporanea. `/health/live` certifica soltanto il processo.
+
+Nei collaudi non in modalità produzione, gli avvii simultanei serializzano le migrazioni con un advisory lock PostgreSQL. In modalità `SECRET_AI_ENV=production` restano necessari schema già migrato, SMTP, chiave di cifratura e configurazione completa: non vengono disattivate le verifiche di produzione.
+
+Su Vercel i cookie sono Secure anche durante il collaudo. L’origine autorizzata deriva da `SECRET_AI_PUBLIC_URL` o dai metadati Vercel del deployment; non da header inoltrati dal client. Production e Preview devono avere database distinti. Dopo il collegamento del database serve un nuovo deployment con le variabili aggiornate.
+
+La correzione applicativa da sola non rende operativo un progetto privo di database. La creazione di una risorsa esterna richiede l’accettazione autorizzata delle condizioni del fornitore e la verifica del piano prima della conferma. Non utilizzare risorse di FindMyInk.
+
 ## Backup e restore
 
 ```bash

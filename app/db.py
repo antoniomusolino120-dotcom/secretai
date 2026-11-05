@@ -12,6 +12,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import NullPool
+from app.config import on_vercel
 
 ROOT = Path(__file__).resolve().parent.parent
 HEAD = "0008_channel_controls"
@@ -21,19 +22,25 @@ ID_TABLES = {"organizations", "users", "services", "appointments", "meta_message
 
 def database_url():
     url = os.getenv("SECRET_AI_DATABASE_URL")
+    if not url and on_vercel():
+        url = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
     if url:
+        if on_vercel() and not url.startswith(('postgres://', 'postgresql://', 'postgresql+psycopg://')):
+            raise RuntimeError('Vercel requires persistent PostgreSQL; local SQLite is not supported')
         if url.startswith("postgres://"):
             url = "postgresql+psycopg://" + url[len("postgres://"):]
         elif url.startswith("postgresql://"):
             url = "postgresql+psycopg://" + url[len("postgresql://"):]
         return url
+    if on_vercel():
+        raise RuntimeError('Connect a dedicated PostgreSQL database to this Vercel project')
     return "sqlite:///" + str(Path(os.getenv("SECRET_AI_DB", str(ROOT / "secretai.db"))).resolve())
 
 
 def build_engine():
     url = database_url()
     engine = create_engine(url, pool_pre_ping=True, poolclass=NullPool,
-                           **({"connect_args": {"timeout": 10}} if url.startswith("sqlite") else {}))
+                           connect_args={"timeout": 10} if url.startswith("sqlite") else {"connect_timeout": 10})
     if engine.dialect.name == "sqlite":
         @event.listens_for(engine, "connect")
         def sqlite_settings(connection, record):
@@ -47,6 +54,9 @@ def migrate(engine, revision="head"):
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(ROOT / "migrations"))
     with engine.begin() as connection:
+        if engine.dialect.name == 'postgresql':
+            # Concurrent cold starts must not race while creating/upgrading tables.
+            connection.execute(text('SELECT pg_advisory_xact_lock(724120831)'))
         cfg.attributes["connection"] = connection
         command.upgrade(cfg, revision)
 

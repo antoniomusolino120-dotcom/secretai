@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.exc import IntegrityError
+from app.config import on_vercel
 
 COOKIE = "secretai_session"
 SESSION_TTL = 86400
@@ -83,7 +84,7 @@ def install(database):
         db.execute("INSERT INTO sessions(token_hash,user_id,expires_at,csrf_hash) VALUES (?,?,?,?)",
                    (digest(token), user_id, int(time.time()) + SESSION_TTL, digest(csrf)))
         response.set_cookie(COOKIE, token, max_age=SESSION_TTL, httponly=True,
-                            secure=production(), samesite="lax", path="/")
+                            secure=production() or on_vercel(), samesite="lax", path="/")
         return {"access_token": token, "csrf_token": csrf, "token_type": "bearer", "expires_in": SESSION_TTL}
 
     def mail_ready():

@@ -1,5 +1,15 @@
 # Verifica — 5 novembre 2026
 
+## Correzione dell’avvio Vercel
+
+Il log runtime di `secretai-iota.vercel.app` ha confermato il crash SQLite all’importazione di `app.main`, in `app/db.py` durante `PRAGMA journal_mode=WAL`. Sono state verificate le pagine Environment Variables e Storage: nessuna configurazione o database era collegato a SecretAI.
+
+La correzione separa la disponibilità della pagina dall’avvio del database, rifiuta SQLite sul serverless, accetta le variabili standard dell’integrazione PostgreSQL e conserva l’isolamento del database. I test specifici verificano pagina/asset vivi e API chiuse senza database, precedenza delle variabili e origine HTTPS affidabile. Il workflow PostgreSQL verifica anche avvii simultanei e sessioni/dati riletti da una nuova istanza.
+
+Queste prove non sostituiscono il collegamento del database dedicato e il nuovo deployment. Il progetto resta da verificare live dopo l’accettazione autorizzata delle condizioni dell’integrazione. Nessun account Railway è necessario per questa correzione.
+
+---
+
 ## Aggiornamento: dashboard di controllo
 
 La nuova dashboard separa gli orari di risposta IA dagli orari prenotabili dell’attività, presenta interruttori per canale e la scelta Google/gestionale, e conserva Appuntamenti e Attività come storici da aprire. La prova Chromium esercita interruttori reali, persistenza degli orari notturni, scelta del calendario e lettura delle risposte e delle operazioni dell’IA. I dati di appuntamento della prova UI sono creati con le vere funzioni di proposta/conferma; non viene presentata come prova del modello.

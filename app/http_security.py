@@ -9,6 +9,8 @@ import uuid
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import HTTPException
+from app.config import public_origin, on_vercel
 
 log = logging.getLogger("secretai.http")
 
@@ -22,10 +24,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         request_id = uuid.uuid4().hex
         started = time.monotonic()
         response = None
-        production = os.getenv("SECRET_AI_ENV") == "production"
+        production = os.getenv("SECRET_AI_ENV") == "production" or on_vercel()
         try:
             origin = request.headers.get("origin")
-            allowed = os.getenv("SECRET_AI_PUBLIC_URL", "http://localhost:8000").rstrip("/")
+            allowed = public_origin()
             if origin and request.method not in {"GET", "HEAD", "OPTIONS"} and origin != allowed:
                 response = JSONResponse({"detail": "Origine non autorizzata"}, status_code=403)
             if response is None and int(request.headers.get("content-length", "0")) > 1_000_000:
@@ -47,6 +49,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                                             status_code=429, headers={"Retry-After": str(300 - now % 300)})
             if response is None:
                 response = await call_next(request)
+        except HTTPException as error:
+            response = JSONResponse({'detail': error.detail}, status_code=error.status_code, headers=error.headers)
         except ValueError:
             response = JSONResponse({"detail": "Richiesta non valida"}, status_code=400)
         except SQLAlchemyError as error:
@@ -57,7 +61,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers.update({"X-Request-ID": request_id, "X-Content-Type-Options": "nosniff",
                                  "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
                                  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://connect.facebook.net; frame-src https://www.facebook.com https://web.facebook.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://graph.facebook.com https://www.facebook.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
-        if request.url.path.startswith(("/api/","/internal/")):
+        if request.url.path.startswith(("/api/","/internal/","/health/")):
             response.headers["Cache-Control"] = "no-store"
         if production:
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
