@@ -1,36 +1,71 @@
 # SecretAI
 
-Segretaria AI multicanale — foundation MVP.
+Segretaria AI multiazienda con backend FastAPI e dashboard responsive. Progetto indipendente: nessun utilizzo di Supabase e nessuna modifica a FindMyInk.
 
-## Stato
-Prima versione eseguibile **in locale**: dashboard web, registrazione e login, sessioni revocabili, aziende isolate per utente, servizi, appuntamenti, chat AI tramite Ollama (con fallback esplicito quando non disponibile). Google Calendar, telefonia, WhatsApp, Instagram e browser teaching **non sono ancora integrati**.
+## Stato verificabile
 
-> Repository attualmente pubblico: non caricare credenziali, token o dati reali di clienti.
+Questa versione consolida le fondamenta e una parte della segretaria testuale. **Non è un prodotto pronto al lancio.** Telefonia e Computer Use non sono implementati; i collegamenti reali ai provider e diversi flussi restano da collaudare. Vedi [stato e attività](docs/STATUS.md) e [progetto](docs/PROJECT.md).
 
-## Avvio
-Richiede Python 3.11+.
+Sono disponibili account con sessioni revocabili, cookie HttpOnly/CSRF, ruoli, audit, migrazioni, PostgreSQL, CRM, inbox, servizi/prezzi/orari, prenotazioni atomiche e idempotenti. L'AI propone prenotazioni che richiedono conferma esplicita. Google Calendar riceve scritture tramite outbox con verifica conflitti; Meta riceve webhook firmati e dispone di un adattatore di invio. Stripe dispone di Checkout, Portal, webhook e riconciliazione. Le prove automatiche dei provider usano risposte simulate e non certificano account reali.
+
+## Avvio locale
+
+Python 3.12, nessun account esterno necessario per agenda e dashboard.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+pip install -r requirements.lock.txt
+cp .env.example .env
+uvicorn app.main:app --env-file .env --reload --no-access-log
 ```
 
-Apri http://localhost:8000
+Apri `http://localhost:8000`. In sviluppo le migrazioni SQLite sono automatiche; non sono inseriti utenti o aziende demo. Il login rimane disponibile dopo il refresh tramite cookie HttpOnly. La dashboard usa token CSRF per ogni scrittura.
 
-Per abilitare l'AI locale: installa Ollama, esegui `ollama pull qwen2.5:3b` e avvia Ollama. Imposta `OLLAMA_MODEL` per scegliere un modello diverso.
+Per l'AI occorre un server Ollama con modello compatibile con gli strumenti. Imposta `OLLAMA_URL` e `OLLAMA_MODEL`, poi esegui il worker in un processo distinto con lo stesso ambiente:
 
-## Sicurezza
-Questa build è **solo sviluppo locale**, con autenticazione locale di base ma senza rate limiting, verifica email, recupero password, MFA, OAuth o audit completo. Non esporla pubblicamente e non usarla con dati personali reali. Il database SQLite è locale. Prima della produzione servono autenticazione, tenant isolation, consenso/privacy, controlli prenotazioni e integrazioni verificate.
+```bash
+# Esporta le variabili del tuo ambiente con un gestore sicuro; non committare .env.
+python -m app.worker
+```
 
-## Roadmap
-1. Supabase Auth, Postgres e RLS multi-tenant.
-2. Google Calendar OAuth, free/busy e booking idempotente.
-3. WhatsApp e Instagram tramite API Meta autorizzate.
-4. Telefonia SIP e voice worker.
-5. Computer Use con teaching e sessioni isolate.
-6. Stripe, audit, rate limit, test end-to-end.
+`uvicorn --env-file` carica `.env` soltanto nel processo API. Per il worker puoi usare Docker Compose, che lo carica in entrambi i processi.
 
-## Accesso locale
-Apri la dashboard, registra un account con password di almeno 12 caratteri e crea la tua azienda. I token restano solo nella memoria della scheda browser (nuovo login al refresh). I dati esistenti delle precedenti versioni non sono assegnati automaticamente a nessun account. Non utilizzare questo sistema in produzione senza ulteriori misure di sicurezza.
+## PostgreSQL e Docker
+
+Configura `.env` con database dedicato, URL, password e chiave di cifratura. Poi:
+
+```bash
+docker compose up --build -d
+# AI opzionale, dopo aver verificato risorse hardware e modello:
+docker compose --profile ai up -d
+docker compose exec ollama ollama pull qwen2.5:3b
+```
+
+La porta locale è `127.0.0.1:8000`. Il database non espone porte all'host. Il servizio `migrate` deve completare prima di API e worker. In produzione l'API rifiuta SQLite e schemi non aggiornati. HTTPS e go-live richiedono le verifiche descritte in [deployment](docs/DEPLOYMENT.md).
+
+## Test
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q
+playwright install chromium
+python scripts/smoke_browser.py
+```
+
+Per eseguire la suite su un database PostgreSQL di test dedicato:
+
+```bash
+# Imposta SECRET_AI_TEST_DATABASE_URL tramite il tuo gestore di ambiente.
+python -m pytest -q
+```
+
+Ogni test riceve uno schema PostgreSQL separato. Non puntare questa variabile a un database di produzione. La CI include PostgreSQL 16, browser desktop/mobile e build Docker.
+
+## Integrità e sicurezza operativa
+
+Le operazioni di prenotazione serializzano le scritture per azienda. `Idempotency-Key` permette di ripetere una richiesta senza creare duplicati. Le relazioni servizio/cliente/appuntamento hanno vincoli di tenant nel database. La disponibilità locale non viene presentata come disponibilità globale se è collegato Google. Una prenotazione rimane in attesa finché il worker non completa l'evento esterno.
+
+Non esiste una transazione distribuita con Google: un evento creato contemporaneamente da un'altra applicazione può richiedere riconciliazione umana. Un invio Meta dall'esito incerto non viene ripetuto automaticamente. Le istruzioni del modello non autorizzano scritture arbitrarie e il testo generato non viene usato come conferma di operazioni.
+
+I token esterni sono cifrati con Fernet; sessioni e link monouso sono memorizzati come hash. Le chiavi e i backup vanno custoditi separatamente. `scripts/backup.py` produce backup cifrati e rifiuta il ripristino su database non vuoti. Prima del lancio vanno provati il restore PostgreSQL, i flussi live, i controlli di sicurezza e gli adempimenti commerciali/privacy.

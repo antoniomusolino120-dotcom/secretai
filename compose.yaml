@@ -1,0 +1,73 @@
+name: secretai
+x-runtime: &runtime
+  image: secretai:local
+  build: .
+  env_file: .env
+  environment:
+    SECRET_AI_DATABASE_URL: ${SECRET_AI_DATABASE_URL:?Set a dedicated PostgreSQL URL in .env}
+    SECRET_AI_ENV: ${SECRET_AI_ENV:-development}
+  networks: [secretai]
+services:
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: secretai
+      POSTGRES_USER: secretai
+      POSTGRES_PASSWORD: ${SECRET_AI_POSTGRES_PASSWORD:?Set a dedicated database password in .env}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U secretai -d secretai']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [secretai]
+  migrate:
+    <<: *runtime
+    command: [alembic, upgrade, head]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: 'no'
+  api:
+    <<: *runtime
+    ports: ['127.0.0.1:8000:8000']
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+  worker:
+    <<: *runtime
+    command: [python, -m, app.worker]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck: {disable: true}
+    restart: unless-stopped
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [ai]
+    volumes: [ollama_data:/root/.ollama]
+    networks: [secretai]
+    restart: unless-stopped
+  caddy:
+    image: caddy:2
+    profiles: [https]
+    environment:
+      SECRET_AI_DOMAIN: ${SECRET_AI_DOMAIN:-localhost}
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api: {condition: service_healthy}
+    networks:
+      secretai: {ipv4_address: 172.30.0.10}
+    restart: unless-stopped
+networks:
+  secretai:
+    ipam:
+      config: [{subnet: 172.30.0.0/24}]
+volumes:
+  postgres_data:
+  ollama_data:
+  caddy_data:
+  caddy_config:

@@ -1,26 +1,9 @@
-# SecretAI — architettura obiettivo
+# Architettura attuale
 
-## Vincoli
-- Nessuna integrazione Supabase, nessun accesso a progetti FindMyInk.
-- SQLite e dashboard attuali sono una demo locale **senza autenticazione**.
-- Non esporre pubblicamente l'applicazione.
+`app.main` espone API e dashboard. `app.db` gestisce connessioni SQLAlchemy e transazioni; le modifiche di schema vivono in migrazioni Alembic. SQLite è soltanto un'opzione locale, PostgreSQL è obbligatorio in produzione. Tutto appartiene esclusivamente a SecretAI.
 
-## Moduli da implementare
-1. Identity: account, organizzazioni, ruoli, sessioni, audit.
-2. Conversations: inbox, identità canale, handoff a operatore.
-3. AI orchestration: prompt per tenant, strumenti con autorizzazione e conferma.
-4. Booking: servizi, disponibilità, fusi orari, idempotenza, lock, calendario esterno come fonte di verità.
-5. Channels: WhatsApp Cloud API, Instagram Messaging API, SIP/voice worker persistente.
-6. Browser teaching: sessione autorizzata, recorder, skill versionate, validazione, retry controllati.
-7. Billing: abbonamenti, quote di utilizzo, riconciliazione.
+`auth` gestisce identità, ruoli e sessioni; `workspace` contiene azienda, catalogo, CRM, inbox e audit. `booking` è l'unico punto di creazione degli appuntamenti per API e AI. Le scritture prendono un lock sull'azienda e le relazioni usano vincoli tenant nel database. `assistant` interpreta le intenzioni tramite Ollama e produce risposte operative deterministiche dagli strumenti: la scrittura richiede una proposta e conferma esplicita.
 
-## Requisiti di rilascio
-- Auth e isolamento dati dimostrato con test negativi.
-- Credenziali cifrate e segregate; segreti solo lato server.
-- Google Calendar OAuth e conferma reale della prenotazione.
-- Monitoraggio, backup e restore provati.
-- Consenso, retention e policy GDPR.
-- Test E2E e limiti di utilizzo.
+`jobs` è una transactional outbox nel database: la prenotazione e l'operazione esterna vengono salvate nella stessa transazione. `worker` esegue i lavori separatamente dall'API. Gli adattatori `google_calendar`/`google_sync`, `meta_channels` e `billing` gestiscono provider, token, errori e deduplica. Gli effetti non idempotenti dall'esito incerto richiedono verifica umana.
 
-## Priorità immediata
-Sostituire la demo con backend autenticato e database dedicato indipendente, senza usare Supabase.
+Non esiste ancora un motore telefonico o un runner di Computer Use. Non esiste ancora sincronizzazione Google bidirezionale completa. Lo stato dettagliato è in `STATUS.md`.

@@ -1,44 +1,8 @@
 <!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SecretAI — Dashboard locale</title>
-<style>
-:root{font-family:Inter,system-ui,sans-serif;color:#f5f5f5;background:#101114}
-*{box-sizing:border-box}body{margin:0}header{padding:24px;border-bottom:1px solid #303036;display:flex;justify-content:space-between;align-items:center}
-.logo{font-size:24px;font-weight:800}small,.muted{color:#a3a3ac}main{max-width:1100px;margin:auto;padding:24px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
-section{background:#1b1c21;border:1px solid #303036;border-radius:16px;padding:22px}
-h2{font-size:18px;margin-top:0}input,select,button{padding:12px;border-radius:9px;border:1px solid #41414a;background:#25262d;color:white;font:inherit}
-input{width:100%;margin:6px 0}button{cursor:pointer;background:#ff5000;border:0;font-weight:700;margin-top:8px}
-button:hover{background:#e74700}.item{padding:10px 0;border-bottom:1px solid #333}#messages{height:220px;overflow:auto;background:#111216;border-radius:9px;padding:12px;margin:10px 0;white-space:pre-wrap}
-.error{color:#ff9980}label{display:block;margin-top:8px;font-size:13px;color:#c3c3c8}
-</style></head><body>
-<header><div class="logo">Secret<span style="color:#ff5000">AI</span></div><small>Ambiente di sviluppo locale · Non pubblico</small></header>
-<main><section id="authBox"><h2>Accedi o registrati</h2><label>Email</label><input id="email" type="email" autocomplete="username"><label>Password (minimo 12 caratteri)</label><input id="password" type="password" autocomplete="current-password"><button onclick="auth('login')">Accedi</button> <button onclick="auth('register')">Registrati</button></section><div id="workspace" hidden><button onclick="logout()">Esci</button><h1>La tua segretaria AI</h1><p class="muted">Dashboard dimostrativa · Dati locali · Nessun canale esterno collegato</p>
-<div class="grid">
-<section><h2>Azienda</h2><select id="org"></select><label>Nuova azienda</label><input id="orgname" placeholder="Nome azienda"><button onclick="addOrg()">Crea azienda</button></section>
-<section><h2>Servizi</h2><div id="services"></div><label>Nome servizio</label><input id="serviceName" placeholder="Es. Consulenza"><label>Durata (minuti)</label><input id="duration" type="number" min="5" value="30"><button onclick="addService()">Aggiungi servizio</button></section>
-<section><h2>Appuntamenti locali</h2><div id="appointments"></div><label>Cliente</label><input id="customer" placeholder="Nome cliente"><label>Servizio</label><select id="serviceSelect"></select><label>Data e ora</label><input id="when" type="datetime-local"><button onclick="addAppointment()">Prenota nella demo</button></section>
-<section><h2>Chat AI locale</h2><div id="messages" aria-live="polite">Scrivi un messaggio per testare il modello.</div><input id="question" placeholder="Come posso prenotare?"><button onclick="ask()">Invia</button><p class="muted">Richiede Ollama; non crea prenotazioni automaticamente.</p></section>
-</div></div><p id="status" role="status"></p></main>
-<script>
-const el=id=>document.getElementById(id);
-let accessToken = null;
-async function auth(mode){await run(async()=>{const r=await api('auth/'+mode,{method:'POST',body:JSON.stringify({email:el('email').value,password:el('password').value})});accessToken=r.access_token;el('authBox').hidden=true;el('workspace').hidden=false;el('password').value='';await loadOrgs()})}
-async function logout(){try{await api('auth/logout',{method:'POST'})}catch(e){}accessToken=null;el('workspace').hidden=true;el('authBox').hidden=false;el('org').innerHTML='';el('services').innerHTML='';el('appointments').innerHTML='';notice('Sessione terminata')}
-const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function api(path,options={}){const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json',...(accessToken?{'Authorization':'Bearer '+accessToken}:{})},...options});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:JSON.stringify(d.detail));return d}
-const post=(path,data)=>api(path,{method:'POST',body:JSON.stringify(data)});
-function notice(t,bad=false){el('status').textContent=t;el('status').className=bad?'error':''}
-async function run(fn){try{await fn();notice('Operazione completata')}catch(e){notice(e.message,true)}}
-const oid=()=>Number(el('org').value);
-async function loadOrgs(){const data=await api('organizations');const prev=el('org').value;el('org').innerHTML=data.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');if(data.some(x=>String(x.id)===prev))el('org').value=prev;await refresh()}
-async function refresh(){const id=oid();if(!id)return;const [s,a]=await Promise.all([api('services?organization_id='+id),api('appointments?organization_id='+id)]);
-el('services').innerHTML=s.map(x=>'<div class="item">'+esc(x.name)+' · '+x.duration_minutes+' min</div>').join('')||'<p class="muted">Nessun servizio</p>';
-el('serviceSelect').innerHTML=s.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');
-el('appointments').innerHTML=a.map(x=>'<div class="item">'+esc(x.customer)+' · '+esc(x.service)+'<br><small>'+esc(x.starts_at)+'</small></div>').join('')||'<p class="muted">Nessun appuntamento</p>'}
-async function addOrg(){await run(async()=>{const d=await post('organizations',{name:el('orgname').value});await loadOrgs();el('org').value=d.id;await refresh()})}
-async function addService(){await run(async()=>{await post('services',{organization_id:oid(),name:el('serviceName').value,duration_minutes:Number(el('duration').value)});await refresh()})}
-async function addAppointment(){await run(async()=>{const d=new Date(el('when').value);if(isNaN(d))throw Error('Inserisci data e ora');await post('appointments',{organization_id:oid(),customer:el('customer').value,service_id:Number(el('serviceSelect').value),starts_at:d.toISOString()});await refresh()})}
-async function ask(){await run(async()=>{const q=el('question').value;el('messages').textContent+='\nTu: '+q;const d=await post('chat',{organization_id:oid(),message:q});el('messages').textContent+='\nAI: '+d.reply+'\n';el('messages').scrollTop=el('messages').scrollHeight;el('question').value=''})}
-el('org').addEventListener('change',()=>run(refresh));// Login required; tokens stay in memory and are not persisted.
-</script></body></html>
+<html lang="it">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#142b2a"><title>SecretAI · La tua segretaria</title><link rel="stylesheet" href="/static/app.css"><script src="/static/app.js" defer></script></head>
+<body>
+<div id="auth" class="auth"><div class="auth-story"><a class="brand" href="/">secret<span>ai</span><i>✳</i></a><div><span class="eyebrow">IL TEMPO PER QUELLO CHE CONTA</span><h1>La tua attività.<br>Una segretaria<br>sempre presente.</h1><p>Conversazioni, clienti e appuntamenti.<br>Tutto comincia da un unico spazio.</p></div><small>SecretAI · Spazio aziendale indipendente</small></div><div class="auth-card"><span class="eyebrow">BENVENUTO IN SECRETAI</span><h2>Facciamo spazio<br>al tuo lavoro.</h2><p class="muted">Accedi o crea il tuo account aziendale.</p><form id="auth-form"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" minlength="12" maxlength="256" autocomplete="current-password" required></label><button type="submit" name="mode" value="login">Accedi <span>↗</span></button><button class="secondary" type="submit" name="mode" value="register">Crea un account</button></form><button class="text" data-action="forgot">Password dimenticata?</button><p class="hint">Per registrarti, usa una password di almeno 12 caratteri.</p></div></div>
+<div id="app" hidden><aside><a class="brand" href="/">secret<span>ai</span><i>✳</i></a><label class="org-label">IL TUO SPAZIO<select id="organization" aria-label="Azienda"></select></label><button class="text new-org" data-action="new-org">+ Nuova azienda</button><nav id="nav" aria-label="Navigazione principale"></nav><div class="sidebar-foot"><div class="avatar">S</div><div><strong id="user-email"></strong><small>Il tuo account</small></div><button class="text" data-action="logout" aria-label="Esci">↗</button></div></aside><div class="content"><header><div><span class="eyebrow" id="breadcrumb">IL TUO SPAZIO</span><h1 id="page-title">Panoramica</h1></div><div class="top-actions"><span class="status-pill" id="assistant-state">Segretaria da configurare</span><button class="secondary" data-action="refresh" aria-label="Aggiorna">↻</button><button class="text mobile-logout" data-action="logout" aria-label="Esci">Esci</button></div></header><main id="view" tabindex="-1"></main><footer>SecretAI <span>·</span> Il controllo resta a te.</footer></div></div>
+<div id="notice" role="status" aria-live="polite" hidden></div><dialog id="dialog"><div class="dialog-head"><h2 id="dialog-title"></h2><button class="text" data-action="close-dialog" aria-label="Chiudi">✕</button></div><div id="dialog-body"></div></dialog>
+</body></html>
