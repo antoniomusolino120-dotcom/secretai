@@ -20,7 +20,11 @@ ID_TABLES = {"organizations", "users", "services", "appointments", "meta_message
 
 
 def database_url():
-    url = os.getenv("SECRET_AI_DATABASE_URL")
+    url = os.getenv("SECRET_AI_DATABASE_URL") or os.getenv("DATABASE_URL")
+    require_postgres = (os.getenv("RENDER") == "true" or
+                        os.getenv("SECRET_AI_REQUIRE_POSTGRES", "").lower() in {"1", "true", "yes"})
+    if require_postgres and (not url or not url.startswith(("postgres://", "postgresql://", "postgresql+psycopg://"))):
+        raise RuntimeError("A persistent PostgreSQL database must be configured; refusing temporary SQLite storage")
     if url:
         if url.startswith("postgres://"):
             url = "postgresql+psycopg://" + url[len("postgres://"):]
