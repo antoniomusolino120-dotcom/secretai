@@ -94,18 +94,18 @@ def install(database, current_user, require_org):
         return {"authorization_url": AUTH_URL+"?"+query}
 
     @router.get("/api/google/callback")
-    async def callback(request: Request, state: str, code: str, user_id: int = Depends(current_user)):
+    async def callback(request: Request, state: str, code: str):
         client_id, client_secret, redirect = config()
         digest = hashlib.sha256(state.encode()).hexdigest()
         with database(write=True) as db:
-            row = db.execute("SELECT * FROM google_oauth_states WHERE state_hash=? AND user_id=? AND expires_at>?",
-                             (digest, user_id, int(time.time()))).fetchone()
+            row = db.execute("SELECT * FROM google_oauth_states WHERE state_hash=? AND expires_at>?",
+                             (digest, int(time.time()))).fetchone()
             if not row:
                 raise HTTPException(403, "OAuth state non valido o scaduto")
             deleted = db.execute("DELETE FROM google_oauth_states WHERE state_hash=?", (digest,))
             if deleted.rowcount != 1:
                 raise HTTPException(403, "OAuth state già utilizzato")
-            org_id = row["organization_id"]
+            org_id, user_id = row["organization_id"], row["user_id"]
         require_org(user_id, org_id, owner=True)
         async with httpx.AsyncClient(timeout=20) as client:
             try:
@@ -125,7 +125,7 @@ def install(database, current_user, require_org):
             enqueue(db,org_id,"google_reconcile",{"calendar_id":"primary"},f"google:connect:{org_id}:{time.time_ns()}")
             audit(db, "google.connected", user_id, org_id, org_id)
         if "text/html" in request.headers.get("accept", ""):
-            return RedirectResponse("/#connections", status_code=303)
+            return RedirectResponse(os.getenv("SECRET_AI_PUBLIC_URL", "https://secretai-iota.vercel.app").rstrip("/") + "/#connections", status_code=303)
         return {"connected": True, "organization_id": org_id}
 
     @router.get("/api/google/calendars")
