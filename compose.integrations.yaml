@@ -1,5 +1,11 @@
 # docker compose -f compose.yaml -f compose.integrations.yaml --profile integrations up --build -d
 services:
+  api:
+    environment:
+      OLLAMA_URL: ${SECRET_AI_OLLAMA_DOCKER_URL:-http://ollama:11434}
+  worker:
+    environment:
+      OLLAMA_URL: ${SECRET_AI_OLLAMA_DOCKER_URL:-http://ollama:11434}
   browser:
     build: {context: ., dockerfile: deploy/Dockerfile.browser}
     profiles: [integrations]
@@ -30,6 +36,7 @@ services:
     profiles: [integrations]
     env_file: .env
     environment:
+      OLLAMA_URL: ${SECRET_AI_OLLAMA_DOCKER_URL:-http://ollama:11434}
       HF_HOME: /srv/models/huggingface
       WHISPER_DOWNLOAD_ROOT: /srv/models/whisper
     volumes: [voice_models:/srv/models]

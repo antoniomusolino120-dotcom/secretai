@@ -22,7 +22,7 @@ def validate_origin(value):
     p=urlsplit(value)
     origin=f'{p.scheme}://{p.netloc}'
     allowed={v.strip().rstrip('/') for v in os.getenv('BROWSER_ALLOWED_ORIGINS','').split(',') if v.strip()}
-    test=os.getenv('SECRET_AI_ENV')!='production' and os.getenv('BROWSER_ALLOW_LOCAL_TEST')=='1'
+    test=os.getenv('SECRET_AI_ENV','development') in {'development','test'} and os.getenv('BROWSER_ALLOW_LOCAL_TEST')=='1'
     if p.username or p.password or p.fragment or p.query or p.path not in {'','/'} or origin not in allowed or (p.scheme!='https' and not test):
         raise HTTPException(422,'Dominio non autorizzato dal gestore')
     return origin
@@ -30,7 +30,7 @@ def validate_origin(value):
 
 def resolver_rules(origins):
     rules=[]
-    test=os.getenv('SECRET_AI_ENV')!='production' and os.getenv('BROWSER_ALLOW_LOCAL_TEST')=='1'
+    test=os.getenv('SECRET_AI_ENV','development') in {'development','test'} and os.getenv('BROWSER_ALLOW_LOCAL_TEST')=='1'
     for origin in origins:
         host=urlsplit(origin).hostname
         addresses={r[4][0] for r in socket.getaddrinfo(host,None,type=socket.SOCK_STREAM)}
@@ -132,7 +132,7 @@ class Runtime:
             elif kind=='assert_url':
                 if value not in page.url: raise HTTPException(422,'Verifica URL fallita')
             else: raise HTTPException(422,'Azione non supportata')
-            if s['recording']: s['steps'].append({'action':kind,'selector':selector,'value':value})
+            if s['recording']: s['steps'].append({'action':kind,'selector':selector,'value':value,'format':action.get('format','text')})
             return await self.snapshot(s)
     async def save(self,s):
         async with s['lock']:
@@ -160,7 +160,12 @@ class Runtime:
                 # marked attention, never automatically replayed by the outbox.
                 with self.database(write=True,organization_id=org) as db: db.execute('UPDATE browser_runs SET step=? WHERE id=? AND organization_id=?',(number,rid,org))
                 if await page.locator('iframe[src*="captcha"],input[autocomplete="one-time-code"]').count(): raise ValueError('Human verification required')
-                kind=step['action'];value=interpolate(step['value'],variables);locator=page.locator(step['selector']) if step['selector'] else None
+                kind=step['action'];value=interpolate(step['value'],variables)
+                if step.get('format','text')!='text':
+                    from datetime import datetime
+                    parsed=datetime.fromisoformat(value)
+                    value=parsed.strftime({'date':'%Y-%m-%d','time':'%H:%M','date_it':'%d/%m/%Y','datetime_local':'%Y-%m-%dT%H:%M'}[step['format']])
+                locator=page.locator(step['selector']) if step['selector'] else None
                 if kind=='goto': await page.goto(value,wait_until='domcontentloaded')
                 elif kind=='click': await locator.click()
                 elif kind=='fill': await locator.fill(value)

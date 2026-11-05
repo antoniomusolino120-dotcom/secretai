@@ -47,3 +47,4 @@ jobs:
       - run: docker build --tag secretai-browser:verify --file deploy/Dockerfile.browser .
       - run: docker build --tag secretai-voice:verify --file deploy/Dockerfile.voice .
       - run: docker build --tag secretai-asterisk:verify --file deploy/asterisk/Dockerfile .
+      - run: python scripts/verify_asterisk.py

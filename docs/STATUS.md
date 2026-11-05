@@ -1,31 +1,24 @@
-# Stato di avanzamento
+# Stato: preparazione alle integrazioni
 
-Questa versione non soddisfa ancora il criterio di completamento commerciale. Lo stato distingue codice presente, prove automatiche e verifica reale. Le approvazioni esterne non sono l'unica attività residua: restano anche attività di sviluppo autonome.
+La preparazione comprende ora anche i moduli mancanti di telefonia e Computer Use. Non equivale al collaudo commerciale su account reali: quel passaggio richiede autorizzazioni, numero SIP, gestionale e infrastruttura scelti dal titolare.
 
-| Area | Implementato in questa versione | Residuo autonomo / prova necessaria |
+| Area | Lavoro preparatorio implementato | Passaggio con accesso reale |
 | --- | --- | --- |
-| Backend/database | PostgreSQL/SQLite, migrazioni Alembic, transazioni, vincoli tenant e indici | CI PostgreSQL e build Docker superate; resta la procedura di import da SQLite a PostgreSQL |
-| Identità | Login/registrazione, email production, recupero, sessioni revocabili, cookie HttpOnly, CSRF, ruoli, rate limit persistente | Revisione sicurezza indipendente, MFA amministrativa e gestione inviti/team |
-| Dashboard | Panoramica, CRM, inbox, agenda, servizi, istruzioni/orari, collegamenti, abbonamento, audit/coda | Collaudo browser desktop/mobile superato; restano accessibilità e ulteriori flussi di modifica |
-| Prenotazioni | Concorrenza, disponibilità locale, orari/fusi, idempotenza, spostamento e cancellazione, audit | Identificazione cliente per modifiche via canali, più risorse/personale e riconciliazione dei conflitti esterni |
-| AI | Ollama come interprete di strumenti; informazioni/servizi, disponibilità, proposta e conferma esplicita, handoff | Test con un modello realmente avviato; conversazione più naturale, modifiche/cancellazioni autonome e valutazioni sistematiche |
-| Google | OAuth con stato monouso e PKCE, token cifrato/rinnovo, selezione calendari, freebusy, scrittura/modifica/cancellazione outbox | Sincronizzazione bidirezionale incrementale, webhook di cambiamento, controlli aggiuntivi su modifiche esterne; test live con calendario autorizzato |
-| Meta | Webhook firmato, deduplica, inbox unificata, collegamento assistito con verifica ID/token, invio ufficiale in coda, scadenza token/finestra messaggi | Collegamento OAuth/Embedded Signup self-service, rinnovo/revoca avanzati, ricevute di consegna, test live e approvazioni Meta |
-| Telefonia | Non implementata | Motore SIP/Asterisk, audio realtime, Whisper/Piper, barge-in, trasferimenti, persistenza, recupero errori e collaudo reale |
-| Computer Use | Non implementato | Recorder, dimostrazioni, procedure versionate, runner Playwright isolato, sessioni/credenziali, verifica/recupero e test su gestionale |
-| Abbonamenti | Checkout/Portal, webhook firmati e deduplica, riconciliazione stato corrente, rinnovi/cancellazioni via Stripe, consumi atomici | Test sandbox di rinnovo, insoluto, downgrade e rischio; riconciliazione periodica; prezzi e trattamento fiscale da validare |
-| Operazioni | API/worker separati, outbox con lease/retry, log senza payload, healthcheck, Compose/Caddy, backup cifrato/restore su target vuoto | Restore PostgreSQL dimostrato, monitoraggio/alert e heartbeat worker, retention/export/cancellazione dati, staging reale e carico |
+| Backend | PostgreSQL, migrazioni, ruoli, sessioni/CSRF, outbox, concorrenza, idempotenza e audit | Creare l’ambiente dedicato autorizzato e applicare la configurazione |
+| Dashboard | CRM, inbox, agenda, servizi/prezzi/orari, segretaria, collegamenti, telefonia, dimostrazioni e procedure dei gestionali | Inserire i dati aziendali di prova e validare i flussi |
+| AI | Servizi/knowledge base, disponibilità, proposte/conferma, spostamento/cancellazione, identificazione cliente e handoff | Eseguire la preparazione automatica del modello sul server scelto e validare conversazioni reali |
+| Google | OAuth/PKCE, token cifrato/rinnovo, più calendari, eventi, sincronizzazione incrementale, watch/rinnovo e conflitti | Credenziali Google Cloud, consenso e calendario di prova |
+| WhatsApp | Embedded Signup, verifica appartenenza WABA/numero, registrazione/subscription, webhook firmato, inbox, risposte e ricevute | App Meta/configurazione approvata, account Business e numero idoneo |
+| Instagram | OAuth nativo, token lungo/rinnovo, subscription, webhook, inbox, risposte e revoca | App Instagram, account professionale e autorizzazione |
+| Telefonia | Runtime AudioSocket, Whisper/Piper locali, voce italiana, VAD/barge-in, trascrizioni, consumi, handoff, AGI/dialplan Asterisk e configurazione SIP | Provider/numero/SIP, ACL del provider, operatore di destinazione e chiamata reale |
+| Computer Use | Browser isolato, domini autorizzati, login separato dalla registrazione, input parametrizzati, formati data/ora, versioni approvate, replay, verifica/cattura riferimento, collegamento ai servizi e recupero umano | Gestionale di prova, accesso e dimostrazione della procedura reale |
+| Stripe | Checkout/Portal, webhook, riconciliazione periodica, rinnovi/insoluti/downgrade/cancellazioni e quote | Account/sandbox, prezzi/limiti e prove di pagamento autorizzate |
+| Operazioni | API/worker/browser/voice separati, heartbeat/health, backup cifrato/restore, import SQLite→PostgreSQL, retention configurabile ed export/anonimizzazione | Hosting approvato, dominio, SMTP, policy di conservazione/privacy e collaudo staging |
 
-## Prove
+## Prove e limiti
 
-- La suite originaria conteneva 6 test: tutti superati prima delle modifiche.
-- La nuova suite include sicurezza, concorrenza, CRM/inbox, conferma AI, outbox, consumi e adattatori simulati.
-- I risultati effettivi dell'ultima esecuzione sono riportati in `VERIFICATION.md`.
-- Nessun account reale Google, Meta, Stripe, SIP o gestionale è stato usato.
+Il rapporto `VERIFICATION.md` riporta le prove eseguite e distingue provider simulati, browser locale reale e motori vocali reali. I test non autorizzano una dichiarazione di go-live.
 
-## Passi successivi
+La qualità della voce, i tempi sul server scelto, le autorizzazioni effettive Meta/Google, la rete SIP/NAT e la stabilità del gestionale vanno validati durante le integrazioni. Il browser non aggira MFA o CAPTCHA. Un’operazione esterna dall’esito incerto resta sospesa e richiede una verifica, senza replay automatico che potrebbe duplicare una prenotazione.
 
-1. Mantenere verdi le verifiche PostgreSQL/browser/container e completare il resto delle fondamenta operative.
-2. Completare gli elementi testuali ancora mancanti senza credenziali.
-3. Sviluppare telefonia e Computer Use, poi eseguire i collaudi autorizzati.
-4. Preparare staging e collaudo live quando disponibili account, accessi e scelte commerciali.
+Non sono stati usati o modificati Supabase, FindMyInk, account reali, numeri telefonici acquistati o infrastrutture a pagamento.

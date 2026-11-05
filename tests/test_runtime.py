@@ -34,6 +34,7 @@ def test_voice_private_provisioning_and_audio_barge_in_handoff(workspace,monkeyp
     c,main,org,service,_=workspace
     key='private-service-token-with-more-than-32-characters'
     monkeypatch.setenv('SECRET_AI_INTERNAL_TOKEN',key)
+    with main.database(write=True) as db:db.execute('UPDATE organizations SET assistant_enabled=1 WHERE id=?',(org,))
     route=c.post(f'/api/voice/routes?organization_id={org}',json={'name':'Prova','enabled':True,'transfer_channel':'PJSIP/operator'}).json()['id']
     assert c.post('/internal/voice/calls',json={'route_id':route}).status_code==403
     cid=c.post('/internal/voice/calls',json={'route_id':route},headers={'Authorization':'Bearer '+key}).json()['call_id']
@@ -230,8 +231,78 @@ def test_browser_demonstration_replay_and_booking_pipeline(workspace,monkeypatch
             assert (await runtime.execute(rid,org))['status']=='verified'
             saved=c.get(f'/api/appointments?organization_id={org}').json()[0]
             assert saved['status']=='confirmed' and saved['external_reference']=='REF-3'
+            # An uncertain external outcome must not cause an automatic replay.
+            with main.database(write=True) as db:
+                p=db.execute('SELECT steps_json FROM browser_procedures WHERE id=?',(pid,)).fetchone()
+                steps=json.loads(p['steps_json']);steps[-1]={'action':'assert_url','selector':'','value':'/never-confirmed'}
+                db.execute('UPDATE browser_procedures SET steps_json=?,version=version+1 WHERE id=?',(json.dumps(steps),pid))
+            pending=c.post(f'/api/browser/procedures/{pid}/run?organization_id={org}',json={'variables':{'customer':'Uncertain'},'idempotency_key':'uncertain-browser-run'}).json()['id']
+            assert (await runtime.execute(pending,org))['status']=='attention'
+            assert (await runtime.execute(pending,org))['status']=='attention'
+            assert bookings.count('Uncertain')==1
+            resolved=c.post(f'/api/browser/runs/{pending}/resolve?organization_id={org}',json={'outcome':'verified','evidence':'Verified the reference on the local test booking system','booking_reference':'REF-4'})
+            assert resolved.status_code==200
+
         finally:
             for key in list(runtime.sessions):await runtime.close(key)
             if runtime.playwright:await runtime.playwright.stop()
     try:asyncio.run(exercise())
     finally:server.shutdown();server.server_close()
+
+
+def test_whatsapp_signup_success_subscribes_registers_and_encrypts(workspace,monkeypatch):
+    c,main,org,*_=workspace;encrypted(monkeypatch)
+    for k,v in {'META_APP_ID':'app','META_APP_SECRET':'secret','META_WHATSAPP_CONFIG_ID':'config','META_GRAPH_VERSION':'v23.0'}.items():monkeypatch.setenv(k,v)
+    config=c.post(f'/api/meta/oauth/whatsapp/start?organization_id={org}').json();calls=[]
+    def handler(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith('/oauth/access_token'):return httpx.Response(200,json={'access_token':'private-token','expires_in':5000000})
+        if request.url.path.endswith('/debug_token'):return httpx.Response(200,json={'data':{'is_valid':True,'app_id':'app','user_id':'oauth-owner'}})
+        if request.url.path.endswith('/phone_numbers'):return httpx.Response(200,json={'data':[{'id':'456'}]})
+        return httpx.Response(200,json={'success':True})
+    mock_http(monkeypatch,handler)
+    payload={'state':config['state'],'code':'code','waba_id':'123','phone_number_id':'456','pin':'123456'}
+    assert c.post('/api/meta/oauth/whatsapp/complete',json=payload).status_code==200
+    assert any(p.endswith('/subscribed_apps') for p in calls) and any(p.endswith('/register') for p in calls)
+    with main.database() as db:
+        creds=db.execute('SELECT token_ciphertext,oauth_user_id FROM channel_credentials WHERE organization_id=?',(org,)).fetchone()
+        assert 'private-token' not in creds['token_ciphertext'] and creds['oauth_user_id']=='oauth-owner'
+    assert c.post('/api/meta/oauth/whatsapp/complete',json=payload).status_code==403
+
+
+def test_automation_cannot_bind_another_company_procedure(workspace,monkeypatch):
+    c,main,org,*_=workspace
+    monkeypatch.setenv('BROWSER_ALLOWED_ORIGINS','https://authorized.example')
+    pid=c.post(f'/api/browser/procedures?organization_id={org}',json={'name':'Private procedure','origin':'https://authorized.example'}).json()['id']
+    with main.database(write=True) as db:db.execute('UPDATE browser_procedures SET approved=1 WHERE id=?',(pid,))
+    outsider(c)
+    other=c.post('/api/organizations',json={'name':'Other'}).json()['id']
+    r=c.post('/api/services',json={'organization_id':other,'name':'Invalid','duration_minutes':30,'automation':{'create':pid}})
+    assert r.status_code==422
+    r=c.post(f'/api/browser/procedures/{pid}/run?organization_id={other}',json={'variables':{},'idempotency_key':'forbidden-run-id'})
+    assert r.status_code==404
+
+
+def test_billing_reconciliation_renewal_failed_payment_and_downgrade(workspace,monkeypatch):
+    from app import billing
+    from types import SimpleNamespace
+    c,main,org,*_=workspace
+    now=int(time.time())
+    monkeypatch.setenv('SECRET_AI_PLANS_JSON',json.dumps({'starter':{'price_id':'price_starter','message_limit':10,'voice_seconds_limit':100},'pro':{'price_id':'price_pro','message_limit':100,'voice_seconds_limit':1000}}))
+    with main.database(write=True) as db:db.execute("INSERT INTO billing_accounts(organization_id,stripe_customer_id) VALUES (?,'cus_test')",(org,))
+    class Subscription:
+        id='sub_test';status='active';cancel_at_period_end=False;price='price_pro';start=now;end=now+3600
+        def to_dict(self):return {'items':{'data':[{'price':{'id':self.price},'current_period_start':self.start,'current_period_end':self.end}]}}
+    subscription=Subscription();listing=SimpleNamespace(data=[subscription],has_more=False)
+    monkeypatch.setattr(billing,'client',lambda:SimpleNamespace(v1=SimpleNamespace(subscriptions=SimpleNamespace(list=lambda data:listing))))
+    async def reconcile():await billing.handlers(main.database)['stripe_reconcile']({'organization_id':org},{})
+    asyncio.run(reconcile())
+    assert c.get(f'/api/billing?organization_id={org}').json()['subscription']['plan']=='pro'
+    subscription.status='past_due';asyncio.run(reconcile())
+    monkeypatch.setenv('SECRET_AI_BILLING_REQUIRED','1')
+    with pytest.raises(HTTPException):billing.consume(main.database,org,'messages',1,'declined-cycle')
+    subscription.status='active';subscription.start=now+10;subscription.end=now+7200;subscription.price='price_starter';asyncio.run(reconcile())
+    saved=c.get(f'/api/billing?organization_id={org}').json()['subscription']
+    assert saved['plan']=='starter' and saved['period_end']==now+7200
+    listing.data=[];asyncio.run(reconcile())
+    assert c.get(f'/api/billing?organization_id={org}').json()['subscription']['status']=='canceled'

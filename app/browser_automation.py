@@ -30,6 +30,7 @@ class BrowserAction(BaseModel):
     x: int | None = Field(default=None,ge=0,le=1280)
     y: int | None = Field(default=None,ge=0,le=900)
     value: str = Field(default='',max_length=4000)
+    format: str = Field(default='text',pattern='^(text|date|time|date_it|datetime_local)$')
     parameter: str = Field(default='',pattern='^[a-zA-Z0-9_]*$',max_length=80)
 
 async def rpc(method,path,data=None):
@@ -155,7 +156,10 @@ def enqueue_booking_automation(db,org_id,appointment_id,operation):
     procedure=db.execute('SELECT * FROM browser_procedures WHERE id=? AND organization_id=? AND approved=1',(pid,org_id)).fetchone()
     if not procedure:raise HTTPException(409,'La procedura del gestionale deve essere approvata')
     contact=db.execute('SELECT email,phone FROM contacts WHERE id=? AND organization_id=?',(row['contact_id'],org_id)).fetchone() if row['contact_id'] else None
-    variables={'customer':row['customer'],'starts_at':row['starts_at'],'ends_at':row['ends_at'],'service':row['service_name'],'appointment_id':str(appointment_id),'booking_reference':row['external_reference'],'email':contact['email'] if contact else '', 'phone':contact['phone'] if contact else ''}
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    timezone=db.execute('SELECT timezone FROM organizations WHERE id=?',(org_id,)).fetchone()['timezone']
+    variables={'customer':row['customer'],'starts_at':datetime.fromisoformat(row['starts_at']).astimezone(ZoneInfo(timezone)).isoformat(),'ends_at':datetime.fromisoformat(row['ends_at']).astimezone(ZoneInfo(timezone)).isoformat(),'service':row['service_name'],'appointment_id':str(appointment_id),'booking_reference':row['external_reference'],'email':contact['email'] if contact else '', 'phone':contact['phone'] if contact else ''}
     rid=uuid.uuid4().hex;key=f'booking:{appointment_id}:{operation}:{time.time_ns()}'
     db.execute('INSERT INTO browser_runs(id,organization_id,procedure_id,version,idempotency_key,request_hash,appointment_id,operation,variables_ciphertext,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',(rid,org_id,pid,procedure['version'],key,hashlib.sha256(json.dumps(variables,sort_keys=True).encode()).hexdigest(),appointment_id,operation,encrypt(json.dumps(variables)),int(time.time())))
     db.execute("UPDATE appointments SET status=?,sync_status='pending_browser' WHERE id=? AND organization_id=?",('cancelling' if operation=='cancel' else 'pending_sync',appointment_id,org_id))

@@ -1,9 +1,11 @@
-# Architettura attuale
+# Architettura SecretAI
 
-`app.main` espone API e dashboard. `app.db` gestisce connessioni SQLAlchemy e transazioni; le modifiche di schema vivono in migrazioni Alembic. SQLite è soltanto un'opzione locale, PostgreSQL è obbligatorio in produzione. Tutto appartiene esclusivamente a SecretAI.
+FastAPI espone dashboard/API; PostgreSQL è il database di produzione indipendente. Le migrazioni sono versionate. Autenticazione, sessioni, ruoli, CSRF, audit e vincoli tenant proteggono l’accesso ai dati. Il modello interpreta intenzioni e usa strumenti: non autorizza da solo operazioni, e il suo testo libero non è una conferma.
 
-`auth` gestisce identità, ruoli e sessioni; `workspace` contiene azienda, catalogo, CRM, inbox e audit. `booking` è l'unico punto di creazione degli appuntamenti per API e AI. Le scritture prendono un lock sull'azienda e le relazioni usano vincoli tenant nel database. `assistant` interpreta le intenzioni tramite Ollama e produce risposte operative deterministiche dagli strumenti: la scrittura richiede una proposta e conferma esplicita.
+La transactional outbox collega prenotazioni e operazioni esterne. Gli slot nuovi e precedenti rimangono riservati durante uno spostamento non verificato. Il worker esegue Google/Meta/Stripe e riconcilia periodicamente eventi, abbonamenti e token. I provider dall’esito incerto richiedono verifica umana quando il replay può duplicare un effetto.
 
-`jobs` è una transactional outbox nel database: la prenotazione e l'operazione esterna vengono salvate nella stessa transazione. `worker` esegue i lavori separatamente dall'API. Gli adattatori `google_calendar`/`google_sync`, `meta_channels` e `billing` gestiscono provider, token, errori e deduplica. Gli effetti non idempotenti dall'esito incerto richiedono verifica umana.
+La telefonia è un servizio persistente AudioSocket collegato ad Asterisk con AGI autenticato. Whisper e Piper lavorano localmente; l’input vocale interrompe l’output, le trascrizioni entrano nell’inbox e il handoff ritorna al dialplan per il trasferimento. Il Caller ID non è un’identità autenticata per modificare appuntamenti preesistenti.
 
-Non esiste ancora un motore telefonico o un runner di Computer Use. Non esiste ancora sincronizzazione Google bidirezionale completa. Lo stato dettagliato è in `STATUS.md`.
+Il browser worker è separato dall’API. Ogni sessione ha contesto browser e storage cifrato per azienda; gli host sono esplicitamente autorizzati e risolti/pinned. La registrazione inizia dopo il login e conserva azioni parametrizzate, versioni e verifiche, non password della dimostrazione. Le procedure approvate possono essere associate ai servizi per creare, spostare e cancellare nel gestionale. L’appuntamento viene confermato soltanto dopo l’esito verificato del gestionale e dell’eventuale calendario.
+
+Nessun componente usa Supabase o risorse di FindMyInk. Il runbook distingue preparazione applicativa e collaudo live.

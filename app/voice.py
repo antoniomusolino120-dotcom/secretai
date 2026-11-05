@@ -63,6 +63,8 @@ def install(database, current_user, require_org):
             route = db.execute('SELECT * FROM voice_routes WHERE id=? AND enabled=1',(data.route_id,)).fetchone()
             if not route: raise HTTPException(404,'Route unavailable')
             org_id=route['organization_id']; db.lock_org(org_id)
+            if not db.execute('SELECT assistant_enabled FROM organizations WHERE id=?',(org_id,)).fetchone()['assistant_enabled']:
+                raise HTTPException(409,'Segretaria disattivata: usare la linea operatore')
             # Caller ID is not an authenticated customer identity. A fresh voice
             # conversation can book but cannot inspect or mutate prior customers.
             conv = db.execute("INSERT INTO conversations(organization_id,channel,external_id,updated_at) VALUES (?,'voice',?,?)",(org_id,cid,now)).lastrowid
@@ -73,7 +75,7 @@ def install(database, current_user, require_org):
         with database() as db:
             row=db.execute('SELECT c.status,r.transfer_channel FROM voice_calls c JOIN voice_routes r ON r.id=c.route_id WHERE c.id=?',(call_id,)).fetchone()
         if not row: raise HTTPException(404,'Call unavailable')
-        return {'status':row['status'],'transfer_channel':row['transfer_channel'] if row['status'] in {'human','failed','quota'} else ''}
+        return {'status':row['status'],'transfer_channel':row['transfer_channel'] if row['status'] in {'created','human','failed','quota'} else ''}
     return router
 
 

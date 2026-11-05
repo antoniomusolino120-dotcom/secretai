@@ -15,6 +15,7 @@ def check():
       'voice':['SECRET_AI_INTERNAL_TOKEN','PIPER_MODEL','SECRET_AI_VOICE_ROUTE_ID'],
     }
     result={name:{'implemented':True,'missing_configuration':[key for key in keys if not os.getenv(key)],'live_verified':False} for name,keys in groups.items()}
+    if os.getenv('SECRET_AI_PLANS_JSON','{}')=='{}' and 'SECRET_AI_PLANS_JSON' not in result['stripe']['missing_configuration']:result['stripe']['missing_configuration'].append('SECRET_AI_PLANS_JSON')
     result['voice']['tts_model_present']=Path(os.getenv('PIPER_MODEL','__missing__')).is_file()
     result['voice']['stt_installed']=importlib.util.find_spec('faster_whisper') is not None
     result['voice']['tts_installed']=importlib.util.find_spec('piper') is not None
