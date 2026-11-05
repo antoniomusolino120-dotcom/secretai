@@ -277,7 +277,7 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
                     r = await client.post(
                         'https://api.groq.com/openai/v1/chat/completions',
                         headers={'Authorization': 'Bearer ' + groq_key},
-                        json={'model': os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+                        json={'model': os.getenv('GROQ_MODEL', 'openai/gpt-oss-120b'),
                               'messages': messages, 'tools': TOOLS,
                               'tool_choice': 'required', 'temperature': 0,
                               'max_completion_tokens': 512})
