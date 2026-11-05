@@ -6,11 +6,37 @@ function questionRow(q={}){
 function readQuestions(form){return [...form.querySelectorAll('[data-question-id]')].map(row=>({id:row.dataset.questionId,label:row.querySelector('[name=question-label]').value.trim(),type:row.querySelector('[name=question-type]').value,required:row.querySelector('[name=question-required]').checked,options:row.querySelector('[name=question-type]').value==='choice'?row.querySelector('[name=question-options]').value.split('\n').map(v=>v.trim()).filter(Boolean):[]}))}
 const serviceEditor=actions['service-edit'];
 actions['service-edit']=id=>{
- serviceEditor(id);const form=$('#service-form'),service=state.services.find(s=>s.id===Number(id))||{};
- const extra=document.createElement('div');extra.innerHTML=`${textfield('Descrizione e dettagli che la segretaria può spiegare','description',service.description||'')}${field('Altri nomi usati dai clienti, separati da virgole','aliases',JSON.parse(service.aliases_json||'[]').join(', '))}<h3>Domande prima dell’appuntamento</h3><p class="subtext">Decidi cosa deve chiedere la segretaria per questo tipo di appuntamento, nell’ordine indicato. Le risposte saranno visibili in Appuntamenti. Per ricominciare il cliente può dire «ricomincia».</p><div id="intake-questions">${JSON.parse(service.intake_questions_json||'[]').map(questionRow).join('')}</div>${action('+ Aggiungi domanda','question-add')}`;
- form.insertBefore(extra,form.querySelector('button:not([type])'));
+ serviceEditor(id);
+ const form=$('#service-form'),service=state.services.find(s=>s.id===Number(id))||{};
+ const extra=document.createElement('div');
+ extra.className='wizard-step wizard-extras';
+ extra.dataset.step='3';
+ extra.hidden=true;
+ extra.innerHTML=`${textfield('Descrizione del servizio','description',service.description||'')}${field('Altri nomi usati dai clienti','aliases',JSON.parse(service.aliases_json||'[]').join(', '))}<h3>Domande prima dell’appuntamento</h3><p class="subtext">Una domanda per schermata. Puoi aggiungerne fino a 20.</p><div id="intake-questions">${JSON.parse(service.intake_questions_json||'[]').map(questionRow).join('')}</div>${action('+ Aggiungi domanda','question-add')}`;
+ const confirmation=form.querySelector('.wizard-step[data-step="3"]');
+ confirmation.dataset.step='4';
+ form.insertBefore(extra,confirmation);
+ form.querySelector('.wizard-progress').innerHTML='<span class="wizard-current">1</span> di <span class="wizard-total">4</span>';
+ form.querySelectorAll('#intake-questions .intake-question').forEach((row,i)=>{row.classList.add('wizard-step');row.dataset.step=String(i+4)});
+ const count=form.querySelectorAll('#intake-questions .intake-question').length;
+ confirmation.dataset.step=String(4+count);
+ form.dataset.step='1';
+ updateServiceWizard(form);
 };
-actions['question-add']=()=>{if(document.querySelectorAll('#intake-questions .intake-question').length>=20)throw Error('Puoi configurare fino a 20 domande per servizio');$('#intake-questions').insertAdjacentHTML('beforeend',questionRow());$('#intake-questions .intake-question:last-child input').focus()};
+actions['question-add']=()=>{
+ const form=$('#service-form'),holder=$('#intake-questions');
+ if(!form||!holder)return;
+ if(holder.querySelectorAll('.intake-question').length>=20)throw Error('Puoi configurare fino a 20 domande per servizio');
+ holder.insertAdjacentHTML('beforeend',questionRow());
+ const row=holder.lastElementChild;
+ row.classList.add('wizard-step');
+ const rows=[...holder.querySelectorAll('.intake-question')];
+ rows.forEach((item,i)=>item.dataset.step=String(i+4));
+ const confirm=form.querySelector('.wizard-step:has(.wizard-summary)');
+ confirm.dataset.step=String(4+rows.length);
+ form.dataset.step=row.dataset.step;
+ updateServiceWizard(form);
+};
 actions['question-remove']=id=>[...document.querySelectorAll('[data-question-id]')].find(v=>v.dataset.questionId===id)?.remove();
 document.addEventListener('change',event=>{
  if(event.target.name==='question-type')event.target.closest('fieldset').querySelector('.question-options').hidden=event.target.value!=='choice';
