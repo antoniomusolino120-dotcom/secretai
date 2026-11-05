@@ -26,7 +26,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         try:
             origin = request.headers.get("origin")
             allowed = os.getenv("SECRET_AI_PUBLIC_URL", "http://localhost:8000").rstrip("/")
-            if origin and request.method not in {"GET", "HEAD", "OPTIONS"} and origin != allowed:
+            # Canonical Vercel frontend proxies API requests to Render; trust only its exact origin.
+            trusted_origins = {allowed, "https://secretai-iota.vercel.app"}
+            if origin and request.method not in {"GET", "HEAD", "OPTIONS"} and origin not in trusted_origins:
                 response = JSONResponse({"detail": "Origine non autorizzata"}, status_code=403)
             if response is None and int(request.headers.get("content-length", "0")) > 1_000_000:
                 response = JSONResponse({"detail": "Payload troppo grande"}, status_code=413)
