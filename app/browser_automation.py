@@ -160,6 +160,7 @@ def enqueue_booking_automation(db,org_id,appointment_id,operation):
     from zoneinfo import ZoneInfo
     timezone=db.execute('SELECT timezone FROM organizations WHERE id=?',(org_id,)).fetchone()['timezone']
     variables={'customer':row['customer'],'starts_at':datetime.fromisoformat(row['starts_at']).astimezone(ZoneInfo(timezone)).isoformat(),'ends_at':datetime.fromisoformat(row['ends_at']).astimezone(ZoneInfo(timezone)).isoformat(),'service':row['service_name'],'appointment_id':str(appointment_id),'booking_reference':row['external_reference'],'email':contact['email'] if contact else '', 'phone':contact['phone'] if contact else ''}
+    for answer in json.loads(row['intake_json']):variables['intake_'+answer['id']]=str(answer['answer'])
     rid=uuid.uuid4().hex;key=f'booking:{appointment_id}:{operation}:{time.time_ns()}'
     db.execute('INSERT INTO browser_runs(id,organization_id,procedure_id,version,idempotency_key,request_hash,appointment_id,operation,variables_ciphertext,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',(rid,org_id,pid,procedure['version'],key,hashlib.sha256(json.dumps(variables,sort_keys=True).encode()).hexdigest(),appointment_id,operation,encrypt(json.dumps(variables)),int(time.time())))
     db.execute("UPDATE appointments SET status=?,sync_status='pending_browser' WHERE id=? AND organization_id=?",('cancelling' if operation=='cancel' else 'pending_sync',appointment_id,org_id))

@@ -90,6 +90,11 @@ async def read_packet(reader):
 class SpeechEngines:
     """Local Whisper + Piper; no cloud credential or fake production fallback."""
     def __init__(self):
+        os.environ['ORT_DISABLE_TELEMETRY']='1'
+        os.environ['HF_HUB_DISABLE_TELEMETRY']='1'
+        os.environ['DO_NOT_TRACK']='1'
+        import onnxruntime
+        onnxruntime.disable_telemetry_events()
         from concurrent.futures import ThreadPoolExecutor
         self.model=None;self.tts=None
         self.executor=ThreadPoolExecutor(max_workers=1,thread_name_prefix='secretai-stt')

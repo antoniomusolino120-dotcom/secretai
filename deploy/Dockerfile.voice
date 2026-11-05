@@ -1,5 +1,6 @@
 FROM python:3.12-slim
 WORKDIR /srv
+ENV ORT_DISABLE_TELEMETRY=1 HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1
 RUN apt-get update && apt-get install -y --no-install-recommends libespeak-ng1 libgomp1 ca-certificates && rm -rf /var/lib/apt/lists/* && useradd --uid 10001 --create-home secretai
 COPY requirements.lock.txt requirements-voice.txt ./
 RUN pip install --no-cache-dir -r requirements-voice.txt && python -c "from faster_whisper import WhisperModel; from piper.voice import PiperVoice"

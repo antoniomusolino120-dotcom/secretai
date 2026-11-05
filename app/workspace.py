@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.auth import audit
 from app.booking import enqueue, replay, remember
+from app.intake import Question
 
 
 class Organization(BaseModel):
@@ -55,6 +56,22 @@ class Service(BaseModel):
     price_cents: int = Field(default=0, ge=0, le=10_000_000)
     active: bool = True
     automation: dict[str,str] = Field(default_factory=dict)
+    description: str = Field(default='',max_length=8000)
+    aliases: list[str] = Field(default_factory=list,max_length=20)
+    intake_questions: list[Question] = Field(default_factory=list,max_length=20)
+
+    @field_validator('aliases')
+    @classmethod
+    def valid_aliases(cls,value):
+        value=[v.strip() for v in value]
+        if any(not v or len(v)>120 for v in value):raise ValueError('Nome alternativo non valido')
+        return list(dict.fromkeys(value))
+
+    @field_validator('intake_questions')
+    @classmethod
+    def unique_questions(cls,value):
+        if len({q.id for q in value})!=len(value):raise ValueError('Identificativi delle domande duplicati')
+        return value
 
 
     @field_validator('automation')
@@ -146,8 +163,8 @@ def install(database, current_user, require_org):
         require_org(user_id, data.organization_id, owner=True)
         with database(write=True, organization_id=data.organization_id) as db:
             validate_automations(db,data)
-            cur = db.execute("INSERT INTO services(organization_id,name,duration_minutes,price_cents,active,automation_json) VALUES (?,?,?,?,?,?)",
-                             (data.organization_id, data.name, data.duration_minutes, data.price_cents, int(data.active),json.dumps(data.automation)))
+            cur = db.execute("INSERT INTO services(organization_id,name,duration_minutes,price_cents,active,automation_json,description,aliases_json,intake_questions_json) VALUES (?,?,?,?,?,?,?,?,?)",
+                             (data.organization_id,data.name,data.duration_minutes,data.price_cents,int(data.active),json.dumps(data.automation),data.description,json.dumps(data.aliases),json.dumps([q.model_dump() for q in data.intake_questions])))
             audit(db, "service.created", user_id, data.organization_id, cur.lastrowid)
             return {"id": cur.lastrowid, **data.model_dump()}
 
@@ -156,10 +173,12 @@ def install(database, current_user, require_org):
         require_org(user_id, data.organization_id, owner=True)
         with database(write=True, organization_id=data.organization_id) as db:
             validate_automations(db,data)
-            result = db.execute("UPDATE services SET name=?,duration_minutes=?,price_cents=?,active=?,automation_json=? WHERE id=? AND organization_id=?",
-                                (data.name, data.duration_minutes, data.price_cents, int(data.active),json.dumps(data.automation), service_id, data.organization_id))
+            result = db.execute("UPDATE services SET name=?,duration_minutes=?,price_cents=?,active=?,automation_json=?,description=?,aliases_json=?,intake_questions_json=? WHERE id=? AND organization_id=?",
+                                (data.name,data.duration_minutes,data.price_cents,int(data.active),json.dumps(data.automation),data.description,json.dumps(data.aliases),json.dumps([q.model_dump() for q in data.intake_questions]),service_id,data.organization_id))
             if result.rowcount != 1:
                 raise HTTPException(404, "Servizio inesistente")
+            for proposal in db.execute('SELECT id,payload_json FROM booking_proposals WHERE organization_id=? AND result_json IS NULL',(data.organization_id,)).fetchall():
+                if json.loads(proposal['payload_json']).get('service_id')==service_id:db.execute('UPDATE booking_proposals SET expires_at=0 WHERE id=?',(proposal['id'],))
             audit(db, "service.updated", user_id, data.organization_id, service_id)
         return {"ok": True}
 
