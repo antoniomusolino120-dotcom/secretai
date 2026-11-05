@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://secretai-ym9f.onrender.com/api/:path*"
+    },
+    {
+      "source": "/health/:path*",
+      "destination": "https://secretai-ym9f.onrender.com/health/:path*"
+    },
+    {
+      "source": "/",
+      "destination": "/index.html"
+    }
+  ]
+}
