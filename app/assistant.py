@@ -272,8 +272,21 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         if not history or history[-1]['body']!=message:messages.append({'role':'user','content':message})
         try:
             async with httpx.AsyncClient(timeout=45,trust_env=False) as client:
-                r=await client.post(os.getenv('OLLAMA_URL','http://127.0.0.1:11434').rstrip('/')+'/api/chat',json={'model':os.getenv('OLLAMA_MODEL','qwen2.5:3b'),'messages':messages,'tools':TOOLS,'stream':False,'options':{'temperature':0,'num_predict':256,'num_ctx':4096}})
-                r.raise_for_status();calls=r.json().get('message',{}).get('tool_calls',[])
+                groq_key = os.getenv('GROQ_API_KEY', '').strip()
+                if groq_key:
+                    r = await client.post(
+                        'https://api.groq.com/openai/v1/chat/completions',
+                        headers={'Authorization': 'Bearer ' + groq_key},
+                        json={'model': os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+                              'messages': messages, 'tools': TOOLS,
+                              'tool_choice': 'required', 'temperature': 0,
+                              'max_completion_tokens': 512})
+                    r.raise_for_status()
+                    calls = (r.json().get('choices') or [{}])[0].get('message', {}).get('tool_calls') or []
+                else:
+                    r=await client.post(os.getenv('OLLAMA_URL','http://127.0.0.1:11434').rstrip('/')+'/api/chat',json={'model':os.getenv('OLLAMA_MODEL','qwen2.5:3b'),'messages':messages,'tools':TOOLS,'stream':False,'options':{'temperature':0,'num_predict':256,'num_ctx':4096}})
+                    r.raise_for_status()
+                    calls=r.json().get('message',{}).get('tool_calls',[])
                 if len(calls)!=1:return details_reply(['day','time','customer'] if selected else ['service','day','time','customer'],services,selected)
                 name,args=calls[0]['function']['name'],calls[0]['function']['arguments']
                 if isinstance(args,str):args=json.loads(args)
