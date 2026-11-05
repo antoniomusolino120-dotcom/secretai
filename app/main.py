@@ -61,6 +61,14 @@ app.include_router(install_workspace(database, current_user, require_org))
 app.include_router(install_booking(database, current_user, require_org))
 app.include_router(install_meta(database, current_user, require_org))
 app.include_router(install_google(database, current_user, require_org))
+from app.voice import install as install_voice
+from app.browser_automation import install as install_browser
+from app.google_reconcile import install as install_reconcile
+from app.meta_oauth import install as install_oauth
+from app.operations import install as install_operations
+for install in (install_voice,install_browser,install_reconcile,install_oauth,install_operations):
+    app.include_router(install(database,current_user,require_org))
+
 
 @app.get("/api/integrations")
 def integrations(organization_id: int, user_id: int = Depends(current_user)):
@@ -71,6 +79,6 @@ def integrations(organization_id: int, user_id: int = Depends(current_user)):
     return {"google": {"configured": all(os.getenv(k) for k in ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "SECRET_AI_ENCRYPTION_KEY"]), "connected": google},
             "meta": {"configured": bool(os.getenv("META_APP_SECRET") and os.getenv("META_VERIFY_TOKEN")), "channels": meta},
             "ai": {"provider": "ollama", "model": os.getenv("OLLAMA_MODEL", "qwen2.5:3b"), "live_verified": False},
-            "telephony": {"connected": False},
+            "telephony": {"configured": bool(os.getenv("SECRET_AI_INTERNAL_TOKEN") and os.getenv("PIPER_MODEL")), "implemented": True},
             "billing": {"configured": bool(os.getenv("STRIPE_SECRET_KEY") and os.getenv("STRIPE_WEBHOOK_SECRET") and os.getenv("SECRET_AI_PLANS_JSON"))},
-            "computer_use": {"configured": False}}
+            "computer_use": {"configured": bool(os.getenv("BROWSER_WORKER_URL") and os.getenv("BROWSER_ALLOWED_ORIGINS")), "implemented": True}}

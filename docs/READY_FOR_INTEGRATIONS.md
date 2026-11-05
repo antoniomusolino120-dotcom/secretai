@@ -1,11 +1,16 @@
-# Preparazione alle integrazioni
+# Handoff per le integrazioni
 
-Il codice degli adattatori testuali e di billing è predisposto per un collaudo assistito; il prodotto non è pronto al lancio. Prima configurare credenziali private e usare account di prova dedicati esclusivamente a SecretAI. Non usare risorse di FindMyInk.
+I moduli applicativi sono implementati. L’ordine seguente raccoglie i passaggi che dipendono da account, accessi o decisioni del titolare. Il documento `INTEGRATION_RUNBOOK.md` contiene configurazione e prove di accettazione.
 
-- Google: client OAuth Web, redirect `/api/google/callback`, account calendario di prova, consenso. Provare lettura, conflitti, creazione/modifica/cancellazione, retry e revoca token.
-- Meta: app approvata, versione API esplicita, webhook `/api/meta/webhook`, chiave firma e verify token. Collegamento assistito tramite dashboard con ID/token verificati; OAuth/Embedded Signup completo ancora da sviluppare.
-- Stripe: sandbox dedicata, Prices e limiti approvati, restricted API key, webhook `/api/billing/webhook`. Gli eventi necessari sono elencati in `app/billing.py`. Provare anche insoluti, rinnovi, cancellazioni e rischio; la pagina di successo non concede accesso.
-- Email: SMTP con STARTTLS e mittente autorizzato per conferma e recupero password. Non sono state inviate email reali.
-- Telefonia/gestionale: richiedono prima l'implementazione dei moduli indicati in `STATUS.md` e successivamente account, numero e gestionale di prova.
+| Ordine | Il titolare mette a disposizione | SecretAI è predisposto per |
+| --- | --- | --- |
+| 1. Hosting | Provider/costi approvati, dominio e ambiente dedicato | Docker, PostgreSQL, migrazioni, API/worker/browser/voice, HTTPS e controlli |
+| 2. AI/voce | Risorse del server approvate | Download automatico Ollama/Whisper/Piper e verifica degli strumenti; nessun account AI obbligatorio |
+| 3. Google | Progetto Google Cloud e consenso calendario test | Collegamento OAuth, eventi, modifiche, sincronizzazione e conflitti |
+| 4. Meta | App, configurazione Embedded Signup, account Business/professionale e approvazioni | Collegamento dalla dashboard senza consegnare token al cliente finale |
+| 5. Telefonia | Numero/provider/SIP, IP autorizzati e destinazione operatore | AudioSocket/Asterisk, conversazione, interruzioni, prenotazione e trasferimento |
+| 6. Gestionale | Ambiente di prova e accesso autorizzato | Registrazione dimostrazione, associazione ai servizi ed esecuzione verificata |
+| 7. Stripe | Sandbox/account, Prices, piani/limiti e scelte fiscali | Checkout, Portal, rinnovi, insoluti, downgrade, cancellazione e quote |
+| 8. Azienda/privacy | Dati aziendali, SMTP, policy di conservazione e validazione legale | Knowledge base, istruzioni, retention/export e gestione delle conversazioni |
 
-Prima di attivare imposte automatiche, vanno concordati prezzi, IVA, registrazioni fiscali e modalità di fatturazione. Nessuna configurazione Stripe Tax viene attivata da questo codice.
+Il collaudo live è ancora necessario. Non è stato attivato Stripe Tax: IVA, registrazioni e fatturazione vanno concordati prima del lancio. Non inviare password o chiavi nella chat; conservarle nell’ambiente privato o autorizzare gli account tramite i pulsanti di collegamento.

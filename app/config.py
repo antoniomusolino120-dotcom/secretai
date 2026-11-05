@@ -4,6 +4,8 @@ from app.secrets import cipher
 
 
 def validate():
+    if os.getenv("SECRET_AI_ENV","development") not in {"development","test","production"}:
+        raise RuntimeError("Unknown SecretAI environment")
     if os.getenv("SECRET_AI_ENV", "development") != "production":
         return
     public = urlparse(os.getenv("SECRET_AI_PUBLIC_URL", ""))

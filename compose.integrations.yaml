@@ -1,0 +1,63 @@
+# docker compose -f compose.yaml -f compose.integrations.yaml --profile integrations up --build -d
+services:
+  api:
+    environment:
+      OLLAMA_URL: ${SECRET_AI_OLLAMA_DOCKER_URL:-http://ollama:11434}
+  worker:
+    environment:
+      OLLAMA_URL: ${SECRET_AI_OLLAMA_DOCKER_URL:-http://ollama:11434}
+  browser:
+    build: {context: ., dockerfile: deploy/Dockerfile.browser}
+    profiles: [integrations]
+    init: true
+    shm_size: 1gb
+    environment:
+      SECRET_AI_DATABASE_URL: ${SECRET_AI_DATABASE_URL:?}
+      SECRET_AI_ENV: ${SECRET_AI_ENV:-development}
+      SECRET_AI_ENCRYPTION_KEY: ${SECRET_AI_ENCRYPTION_KEY:?}
+      SECRET_AI_INTERNAL_TOKEN: ${SECRET_AI_INTERNAL_TOKEN:?}
+      BROWSER_ALLOWED_ORIGINS: ${BROWSER_ALLOWED_ORIGINS:-}
+      BROWSER_AUTH_ORIGINS: ${BROWSER_AUTH_ORIGINS:-}
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    networks: [secretai]
+    restart: unless-stopped
+  voice-models:
+    build: {context: ., dockerfile: deploy/Dockerfile.voice}
+    image: secretai-voice:local
+    profiles: [integrations]
+    command: [python, scripts/prepare_voice.py]
+    volumes: [voice_models:/srv/models]
+    networks: [secretai]
+    restart: 'no'
+  voice:
+    image: secretai-voice:local
+    build: {context: ., dockerfile: deploy/Dockerfile.voice}
+    profiles: [integrations]
+    env_file: .env
+    environment:
+      OLLAMA_URL: ${SECRET_AI_OLLAMA_DOCKER_URL:-http://ollama:11434}
+      HF_HOME: /srv/models/huggingface
+      WHISPER_DOWNLOAD_ROOT: /srv/models/whisper
+    volumes: [voice_models:/srv/models]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      voice-models: {condition: service_completed_successfully}
+    networks: [secretai]
+    restart: unless-stopped
+  asterisk:
+    build: {context: ., dockerfile: deploy/asterisk/Dockerfile}
+    profiles: [sip]
+    environment:
+      SECRET_AI_API_INTERNAL_URL: http://api:8000
+      SECRET_AI_INTERNAL_TOKEN: ${SECRET_AI_INTERNAL_TOKEN:?}
+      SECRET_AI_VOICE_ROUTE_ID: ${SECRET_AI_VOICE_ROUTE_ID:-}
+      SIP_FALLBACK_CHANNEL: ${SIP_FALLBACK_CHANNEL:-PJSIP/operator}
+    # This private file is supplied only after choosing/authorizing a provider.
+    volumes: [./.runtime/pjsip.conf:/etc/asterisk/pjsip.conf:ro]
+    ports: ['5060:5060/udp', '10000-10100:10000-10100/udp']
+    depends_on: [voice, api]
+    networks: [secretai]
+    restart: unless-stopped
+volumes:
+  voice_models:

@@ -23,7 +23,7 @@ Definire frequenza, conservazione, storage fuori host e RPO/RTO con il titolare.
 
 ## Monitoraggio
 
-`/health/live` misura il processo; `/health/ready` verifica il database. La dashboard Attività mostra job falliti/in attesa e audit senza contenuti delle conversazioni. Sono ancora da implementare heartbeat worker, alert esterni, metriche di latenza provider e monitoraggio di restore/retention. Un worker fermo può lasciare le prenotazioni correttamente in attesa senza completarle.
+`/health/live` misura il processo; `/health/ready` verifica il database. La dashboard Attività mostra job falliti/in attesa e audit senza contenuti delle conversazioni. Heartbeat per worker, browser e voce, riconciliazione e retention configurabile sono implementati. Il runbook descrive i runtime aggiuntivi e la verifica backup/restore PostgreSQL in CI. Collegare i controlli health e le segnalazioni al monitoraggio dell’hosting autorizzato; un worker fermo lascia le prenotazioni in attesa senza confermarle falsamente.
 
 ## Rollback
 

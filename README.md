@@ -4,9 +4,9 @@ Segretaria AI multiazienda con backend FastAPI e dashboard responsive. Progetto 
 
 ## Stato verificabile
 
-Questa versione consolida le fondamenta e una parte della segretaria testuale. **Non è un prodotto pronto al lancio.** Telefonia e Computer Use non sono implementati; i collegamenti reali ai provider e diversi flussi restano da collaudare. Vedi [stato e attività](docs/STATUS.md) e [progetto](docs/PROJECT.md).
+Sono implementati anche i runtime preparatori di telefonia e Computer Use, i collegamenti Meta self-service e la sincronizzazione Google incrementale. Le procedure dei gestionali si registrano nella dashboard e si associano ai servizi. La voce usa Whisper/Piper locali e il trasferimento Asterisk; i clienti non devono installare software.
 
-Sono disponibili account con sessioni revocabili, cookie HttpOnly/CSRF, ruoli, audit, migrazioni, PostgreSQL, CRM, inbox, servizi/prezzi/orari, prenotazioni atomiche e idempotenti. L'AI propone prenotazioni che richiedono conferma esplicita. Google Calendar riceve scritture tramite outbox con verifica conflitti; Meta riceve webhook firmati e dispone di un adattatore di invio. Stripe dispone di Checkout, Portal, webhook e riconciliazione. Le prove automatiche dei provider usano risposte simulate e non certificano account reali.
+La preparazione non equivale a un lancio commerciale già collaudato. Account/consensi Google e Meta, provider/numero SIP, gestionale, Stripe e hosting richiedono ancora autorizzazione e prove reali. Consulta [stato](docs/STATUS.md), [prove eseguite](docs/VERIFICATION.md) e [runbook delle integrazioni](docs/INTEGRATION_RUNBOOK.md).
 
 ## Avvio locale
 
@@ -69,3 +69,11 @@ Le operazioni di prenotazione serializzano le scritture per azienda. `Idempotenc
 Non esiste una transazione distribuita con Google: un evento creato contemporaneamente da un'altra applicazione può richiedere riconciliazione umana. Un invio Meta dall'esito incerto non viene ripetuto automaticamente. Le istruzioni del modello non autorizzano scritture arbitrarie e il testo generato non viene usato come conferma di operazioni.
 
 I token esterni sono cifrati con Fernet; sessioni e link monouso sono memorizzati come hash. Le chiavi e i backup vanno custoditi separatamente. `scripts/backup.py` produce backup cifrati e rifiuta il ripristino su database non vuoti. Prima del lancio vanno provati il restore PostgreSQL, i flussi live, i controlli di sicurezza e gli adempimenti commerciali/privacy.
+
+## Runtime per le integrazioni
+
+```bash
+docker compose -f compose.yaml -f compose.integrations.yaml --profile integrations --profile ai up --build -d
+```
+
+`voice-models` prepara la voce italiana e Whisper; `ollama-models` prepara il modello e verifica il tool calling. Il profilo `sip` si abilita soltanto dopo la configurazione del provider autorizzato. Vedi il runbook per variabili, domini consentiti, dimostrazioni, consenso e prove di accettazione.

@@ -47,6 +47,17 @@ services:
     volumes: [ollama_data:/root/.ollama]
     networks: [secretai]
     restart: unless-stopped
+  ollama-models:
+    image: secretai:local
+    build: .
+    profiles: [ai]
+    command: [python, scripts/prepare_ai.py]
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+    depends_on: [ollama]
+    networks: [secretai]
+    restart: 'no'
   caddy:
     image: caddy:2
     profiles: [https]

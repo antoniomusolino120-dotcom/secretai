@@ -71,7 +71,7 @@ def run():
                     page.get_by_role("button", name="Cancella", exact=True).click()
                     page.locator('#cancel-form button').click()
                     expect(page.locator('#view')).to_contain_text('Nessun appuntamento')
-                    for section in ("overview", "inbox", "contacts", "assistant", "connections", "billing", "activity"):
+                    for section in ("overview", "inbox", "contacts", "assistant", "connections", "billing", "activity", "voice", "automations"):
                         page.locator(f'nav [data-id="{section}"]').click()
                         expect(page.locator('#page-title')).not_to_be_empty()
                         expect(page.locator('#view')).not_to_have_class('loading')

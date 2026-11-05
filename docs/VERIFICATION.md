@@ -1,25 +1,34 @@
 # Verifica del 5 novembre 2026
 
-## Risultati eseguiti localmente
+## Prove locali
 
-- Suite originaria prima delle modifiche: 6 test superati.
-- Suite ampliata: 30 test superati su SQLite, comprendenti concorrenza, idempotenza, autenticazione, CSRF, ruoli, isolamento CRM/inbox/audit, vincoli tenant, orari, proposte AI, outbox, quote, reset password, firme webhook, adattatori Google/Meta/Stripe simulati, migrazione dati legacy e backup/restore cifrato.
-- Chromium: flusso E2E superato su desktop 1440×1000 e mobile 390×844. Registrazione → azienda → servizio → appuntamento → refresh con sessione persistente → cancellazione → navigazione di tutte le sezioni. Nessun errore JavaScript o overflow orizzontale rilevato. Screenshot controllati visivamente.
-- Controlli sintassi Python e JavaScript, `git diff --check`: superati.
+- Prima tranche: 30 test backend.
+- Runtime integrazioni: 44 test superati, inclusi rinnovo, insoluto, downgrade e cancellazione Stripe con provider simulato.
+- Chromium reale: registrazione, azienda, servizio, prenotazione, refresh, cancellazione e navigazione desktop/mobile, comprese Telefonia e Gestionali.
+- Computer Use reale su gestionale HTTP locale: dimostrazione → campi parametrizzati → approvazione → replay con dati diversi → riferimento catturato → prenotazione applicativa confermata. Ripetere lo stesso run non duplica l’operazione. L’esito incerto resta sospeso e può essere risolto dopo verifica manuale.
+- Protocollo telefonico reale su socket locale con motori sostituiti: UUID/framing AudioSocket, voce bidirezionale, interruzione del saluto, trascrizione in inbox, consumi e handoff.
+- Motori vocali reali: Piper italiano Paola medium → PCM 8 kHz → Whisper small. Frase di prova sintetizzata e riconosciuta: “Buongiorno, vorrei prenotare un appuntamento per domani mattina.” Prova locale iniziale, comprensiva del caricamento: circa 11,5 s; sintesi successiva a modelli caricati: circa 0,08 s. Non è un benchmark della futura rete telefonica.
+- Controlli sintassi Python/JavaScript e `git diff --check`.
 
-## Risultati eseguiti su GitHub Actions
+## Prove remote già acquisite
 
-Codice verificato: `e339443bca76a8d6582d778f97cdf94e18a66cd5`.
+Sul commit applicativo `14a04556429eb6141525c48adffc851296d78087` sono verdi tutti gli otto controlli GitHub Actions (push e pull request):
 
-- PostgreSQL 16: suite completa superata, con schema isolato per test. I test specifici di migrazione legacy e backup SQLite continuano a usare esplicitamente SQLite; il restore PostgreSQL non è ancora dimostrato.
-- Suite SQLite: superata anche nel runner remoto.
-- Chromium desktop/mobile: E2E superato anche nel runner remoto Ubuntu 24.04.
-- Build Docker: superata. Il test non certifica un avvio pubblico o un ambiente di produzione.
-- Durante il collaudo sono stati corretti il nome SQL riservato del rate limiter e il recupero degli ID tramite `RETURNING` per psycopg.
+- test unitari;
+- PostgreSQL 16: 43 test superati, con il solo test Chromium eseguito nel job dedicato;
+- backup cifrato/ripristino PostgreSQL e importazione read-only da SQLite, incluse le sequenze;
+- Chromium desktop/mobile e registrazione/replay del gestionale;
+- build delle immagini API, browser, voce e Asterisk;
+- avvio Asterisk senza rete: modulo AudioSocket e dialplan inbound verificati.
 
-## Verifiche non ancora dimostrate
-- Nessun test live con Google, Meta, Stripe, SIP o gestionale esterno.
-- Nessun modello Ollama realmente avviato: i test AI verificano il contratto degli strumenti con un provider simulato.
-- Restore PostgreSQL, carico, review sicurezza indipendente, privacy e operatività commerciale ancora da completare.
+La verifica iniziale ha rilevato e corretto la distribuzione del pacchetto Asterisk e il percorso multiarch del suo modulo audio. Il codice verificato include il conteggio dei secondi di chiamata sul tempo effettivamente trascorso, comprese le pause.
 
-La verifica non certifica il prodotto completo. Telefonia, Computer Use, OAuth Meta self-service e sincronizzazione Google bidirezionale richiedono ancora sviluppo.
+Le prove remote sono consultabili nella [pull request #2](https://github.com/antoniomusolino120-dotcom/secretai/pull/2/checks). Gli aggiornamenti successivi a questo rapporto riguardano soltanto la documentazione.
+
+## Confini della verifica
+
+- OAuth/API Meta, Google e Stripe sono testati con provider simulati; serve ancora il collaudo sugli account autorizzati.
+- Non è stata effettuata una chiamata su rete pubblica/SIP né utilizzato un gestionale aziendale reale.
+- Nessun account, numero o hosting a pagamento è stato attivato.
+- Il modello Ollama non è avviato nel runtime locale: l’installer automatico sul server scelto comprende download e verifica del tool calling.
+- La certificazione di go-live richiede rete/fornitori reali, carico sul server scelto e validazione commerciale/privacy.

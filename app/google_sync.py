@@ -37,6 +37,7 @@ def handlers(database):
                     if result.status_code not in {200, 204, 404, 410}:
                         result.raise_for_status()
                     db.execute("UPDATE appointments SET status='cancelled',sync_status='synced' WHERE id=? AND organization_id=?", (appointment_id, org_id))
+                    db.execute('DELETE FROM appointment_holds WHERE organization_id=? AND appointment_id=?',(org_id,appointment_id))
                     return
                 # Google freeBusy includes our own existing event. Use event listing
                 # on the write calendar so it can be excluded by deterministic ID.
@@ -90,6 +91,7 @@ def handlers(database):
                         existing.raise_for_status()
                     db.execute("UPDATE appointments SET status='confirmed',sync_status='synced',external_event_id=? WHERE id=? AND organization_id=?",
                                (eid, appointment_id, org_id))
+                    db.execute('DELETE FROM appointment_holds WHERE organization_id=? AND appointment_id=?',(org_id,appointment_id))
         if conflict:
             raise AttentionRequired("External calendar conflict; reservation remains unconfirmed")
 
