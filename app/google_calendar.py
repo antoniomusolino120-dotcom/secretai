@@ -114,8 +114,16 @@ def install(database, current_user, require_org):
                     "code_verifier": decrypt(row["verifier_ciphertext"])})
                 response.raise_for_status()
                 tokens = response.json()
+            except httpx.HTTPStatusError as exc:
+                try:
+                    error_code = exc.response.json().get("error", "unknown")
+                except ValueError:
+                    error_code = "non_json_response"
+                allowed_codes = {"invalid_client", "invalid_grant", "invalid_request", "unauthorized_client", "unsupported_grant_type", "access_denied"}
+                safe_code = error_code if isinstance(error_code, str) and error_code in allowed_codes else "unknown"
+                raise HTTPException(502, f"Scambio OAuth non riuscito ({safe_code}); ricollega il calendario")
             except (httpx.HTTPError, ValueError):
-                raise HTTPException(502, "Scambio OAuth non riuscito; ricollega il calendario")
+                raise HTTPException(502, "Scambio OAuth non riuscito (network_or_response); ricollega il calendario")
         if not tokens.get("refresh_token"):
             raise HTTPException(422, "Google non ha restituito un refresh token; ripeti il consenso")
         with database(write=True, organization_id=org_id) as db:
