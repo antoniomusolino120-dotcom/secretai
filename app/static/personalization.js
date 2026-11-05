@@ -16,6 +16,8 @@ actions['service-edit']=id=>{
  const confirmation=form.querySelector('.wizard-step[data-step="3"]');
  confirmation.dataset.step='4';
  form.insertBefore(extra,confirmation);
+ const holder=extra.querySelector('#intake-questions');
+ form.insertBefore(holder,confirmation);
  form.querySelector('.wizard-progress').innerHTML='<span class="wizard-current">1</span> di <span class="wizard-total">4</span>';
  form.querySelectorAll('#intake-questions .intake-question').forEach((row,i)=>{row.classList.add('wizard-step');row.dataset.step=String(i+4)});
  const count=form.querySelectorAll('#intake-questions .intake-question').length;
