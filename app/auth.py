@@ -38,6 +38,11 @@ class Credentials(BaseModel):
     password: str = Field(min_length=12, max_length=256)
 
 
+class ExistingAccountLogin(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=256)
+
+
 class EmailRequest(BaseModel):
     email: EmailStr
 
@@ -127,7 +132,7 @@ def install(database):
             raise HTTPException(409, "Email già registrata")
 
     @router.post("/login")
-    def login(data: Credentials, response: Response):
+    def login(data: ExistingAccountLogin, response: Response):
         with database(write=True) as db:
             user = db.execute("SELECT * FROM users WHERE email=?", (str(data.email).lower(),)).fetchone()
             expected, salt = (user["password_hash"], user["salt"]) if user else ("0" * 64, "00" * 16)
