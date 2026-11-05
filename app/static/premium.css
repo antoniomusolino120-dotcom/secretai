@@ -110,3 +110,10 @@ body{min-height:100vh;min-height:100dvh;margin:0;background:#121621}
 #auth.auth .auth-card .hint{color:#d5cdd0}
 @media(max-width:760px){#auth.auth{padding:clamp(120px,19vh,190px) 18px max(26px,env(safe-area-inset-bottom))!important;align-items:center;justify-content:center}#auth.auth .auth-story>.brand{top:clamp(50px,10vh,100px)}#auth.auth .auth-card{width:100%;max-width:480px;padding:26px 23px}}
 @media(max-height:700px){#auth.auth{justify-content:flex-start;padding-top:125px!important}#auth.auth .auth-story>.brand{top:34px}}
+
+/* Original, unmodified uploaded wordmark: light glass backing keeps black lettering legible */
+.secretai-brand-image{display:block;width:min(100%,310px);height:auto;object-fit:contain}
+#auth.auth .auth-story>.brand{display:flex;align-items:center;justify-content:center;padding:11px 17px;border-radius:20px;background:linear-gradient(135deg,#fffffff2,#ffffffe0);border:1px solid #ffffffa0;box-shadow:inset 0 1px 0 #fff,0 14px 34px #00000025;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+#auth.auth .auth-story>.brand .secretai-brand-image{width:clamp(210px,34vw,320px)}
+aside .brand .secretai-brand-image{width:160px;max-width:100%}
+@media(max-width:760px){#auth.auth .auth-story>.brand{padding:10px 14px;border-radius:17px}#auth.auth .auth-story>.brand .secretai-brand-image{width:min(60vw,270px)}}
