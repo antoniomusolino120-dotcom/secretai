@@ -130,7 +130,7 @@ class VoiceService:
             responder=respond
         self.responder=responder
     async def handle(self,reader,writer):
-        cid=None; output=None; turn=None; timer=None; frames=0; charged=0; utterance=bytearray(); silence=0; speech=0; counter=0
+        cid=None; output=None; turn=None; timer=None; meter=None; frames=0; charged=0; utterance=bytearray(); silence=0; speech=0; counter=0
         async def play(text):
             pcm=await self.engines.synthesize(text)
             for offset in range(0,len(pcm),320):
@@ -167,6 +167,19 @@ class VoiceService:
                 call=db.execute('SELECT c.*,r.greeting FROM voice_calls c JOIN voice_routes r ON r.id=c.route_id WHERE c.id=? AND c.status=\'created\' AND c.created_at>?',(cid,int(time.time())-60)).fetchone()
                 if not call: raise ValueError('Unknown or expired call')
                 if db.execute("UPDATE voice_calls SET status='active' WHERE id=? AND status='created'",(cid,)).rowcount!=1: raise ValueError('Call already attached')
+            async def meter_call():
+                nonlocal charged
+                from app.billing import consume
+                started=time.monotonic()
+                while not writer.is_closing():
+                    seconds=max(1,math.ceil(time.monotonic()-started))
+                    if seconds>charged:
+                        try:consume(self.database,call['organization_id'],'voice_seconds',seconds-charged,f'voice:{cid}:seconds:{seconds}')
+                        except HTTPException:
+                            status('quota');writer.close();return
+                        charged=seconds
+                    await asyncio.sleep(1)
+            meter=spawn(meter_call())
             async def deadline():
                 await asyncio.sleep(int(os.getenv('VOICE_MAX_SECONDS','900'))); status('human'); writer.close()
             timer=asyncio.create_task(deadline())
@@ -179,13 +192,6 @@ class VoiceService:
                 if kind!=0x10: continue
                 if len(data)%2 or len(data)>3200: raise ValueError('Invalid PCM frame')
                 frames+=len(data)//2
-                seconds=math.ceil(frames/8000)
-                if seconds>charged:
-                    from app.billing import consume
-                    try: consume(self.database,call['organization_id'],'voice_seconds',seconds-charged,f'voice:{cid}:seconds:{seconds}')
-                    except HTTPException:
-                        status('quota'); break
-                    charged=seconds
                 values=struct.unpack('<'+'h'*(len(data)//2),data)
                 rms=math.sqrt(sum(x*x for x in values)/max(1,len(values)))
                 duration=len(data)//16
@@ -209,9 +215,9 @@ class VoiceService:
         except Exception:
             if cid: status('failed')
         finally:
-            for task in (output,turn,timer):
+            for task in (output,turn,timer,meter):
                 if task and not task.done(): task.cancel()
-            for task in (output,turn,timer):
+            for task in (output,turn,timer,meter):
                 if task:
                     with contextlib.suppress(asyncio.CancelledError,Exception): await task
             if cid:
