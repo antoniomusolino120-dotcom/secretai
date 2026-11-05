@@ -22,6 +22,11 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
+      - run: python scripts/verify_postgres_ops.py
+        env:
+          PG_DUMP_BIN: /usr/lib/postgresql/16/bin/pg_dump
+          PG_RESTORE_BIN: /usr/lib/postgresql/16/bin/pg_restore
   browser:
     runs-on: ubuntu-24.04
     steps:
@@ -31,8 +36,14 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: playwright install --with-deps chromium
       - run: python scripts/smoke_browser.py
+      - run: python -m pytest -q tests/test_runtime.py -m browser
+        env:
+          SECRET_AI_TEST_BROWSER: '1'
   container:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: docker build --tag secretai:verify .
+      - run: docker build --tag secretai-browser:verify --file deploy/Dockerfile.browser .
+      - run: docker build --tag secretai-voice:verify --file deploy/Dockerfile.voice .
+      - run: docker build --tag secretai-asterisk:verify --file deploy/asterisk/Dockerfile .

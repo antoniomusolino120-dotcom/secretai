@@ -10,6 +10,10 @@ from app.google_sync import handlers as google_handlers
 from app.meta_channels import handlers as meta_handlers
 from app.assistant import handlers as assistant_handlers
 from app.billing import handlers as billing_handlers
+from app.browser_automation import handlers as browser_handlers
+from app.google_reconcile import handlers as reconcile_handlers
+from app.meta_oauth import handlers as oauth_handlers
+from app.operations import schedule
 
 
 async def main(once=False):
@@ -17,13 +21,14 @@ async def main(once=False):
     initialize(engine)
     database = make_database(engine)
     handlers = {**google_handlers(database), **meta_handlers(database),
-                **assistant_handlers(database), **billing_handlers(database)}
+                **assistant_handlers(database), **billing_handlers(database), **browser_handlers(database), **reconcile_handlers(database), **oauth_handlers(database)}
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signum in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(signum, stop.set)
     while not stop.is_set():
         try:
+            schedule(database)
             processed = await run_once(database, handlers)
         except Exception:
             logging.getLogger("secretai.worker").error("Worker poll failed; retrying")
@@ -40,4 +45,6 @@ async def main(once=False):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     asyncio.run(main("--once" in sys.argv))

@@ -4,6 +4,8 @@ Model prose is never evidence of a booking. A proposal is shown first; only an
 explicit customer confirmation invokes the transactional booking tool.
 """
 import json
+import hashlib
+import hmac
 import os
 import secrets
 import time
@@ -14,7 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.auth import audit
-from app.booking import AppointmentRequest, create_booking, slot, enqueue
+from app.booking import AppointmentRequest, create_booking, slot, enqueue,mutate_booking,management_code,utc
 
 
 class Proposal(BaseModel):
@@ -22,6 +24,14 @@ class Proposal(BaseModel):
     service_id: int = Field(gt=0)
     starts_at: datetime
     customer: str = Field(min_length=1, max_length=120)
+
+
+class ChangeProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    appointment_id: int = Field(gt=0)
+    operation: str = Field(pattern='^(reschedule|cancel)$')
+    starts_at: datetime | None = None
+    management_code: str = Field(default='',max_length=100)
 
 
 class SlotInput(BaseModel):
@@ -45,7 +55,9 @@ TOOLS = [tool("services", "Elenca servizi, durata e prezzi"),
          tool("business_info", "Mostra informazioni dell'azienda"),
          tool("availability", "Verifica uno slot esatto con fuso orario", SlotInput.model_json_schema()),
          tool("propose_booking", "Prepara una proposta quando cliente, servizio e orario sono definiti. Non prenota.", Proposal.model_json_schema()),
-         tool("handoff", "Passa a un operatore quando richiesto, per modifiche, cancellazioni o richieste non gestibili")]
+         tool("propose_change", "Prepara spostamento o cancellazione. Per clienti non identificati occorrono riferimento e codice gestione.",ChangeProposal.model_json_schema()),
+         tool("my_appointments", "Elenca solo appuntamenti del cliente identificato in questa conversazione"),
+         tool("handoff", "Passa a un operatore quando richiesto o per richieste non gestibili")]
 
 
 def propose(database, org_id, args, conversation_id=None, user_id=None):
@@ -82,15 +94,54 @@ def confirm(database, org_id, pid, conversation_id=None, user_id=None):
         return json.loads(row["result_json"])
     if row["expires_at"] <= int(time.time()):
         raise HTTPException(409, "Proposta scaduta; verifica un nuovo orario")
-    result = create_booking(database, AppointmentRequest.model_validate_json(row["payload_json"]),
-                            user_id, key="proposal:"+pid, conversation_id=conversation_id)
-    reply = (f"Prenotazione confermata, riferimento {result['id']}, inizio {result['starts_at']}."
-             if result["status"] == "confirmed" else
-             f"Richiesta {result['id']} registrata. Attendo la verifica di Google Calendar: l'appuntamento non è ancora confermato.")
+    payload=json.loads(row['payload_json'])
+    if payload.get('operation') in {'reschedule','cancel'}:
+        def guard(db,appointment):
+            authorize_change(db,org_id,appointment,conversation_id,user_id,payload.get('code_hash',''))
+        result=mutate_booking(database,org_id,payload['appointment_id'],payload['operation'],
+            datetime.fromisoformat(payload['starts_at']) if payload.get('starts_at') else None,
+            user_id,key='proposal:'+pid,guard=guard)
+        reply=("Operazione completata, riferimento "+str(result['id'])+"." if result['sync_status']=='local' else
+               "Operazione registrata. Attendo la conferma del calendario o del gestionale.")
+    else:
+        result = create_booking(database, AppointmentRequest.model_validate(payload), user_id,
+                                key="proposal:"+pid, conversation_id=conversation_id)
+        reply = (f"Prenotazione confermata, riferimento {result['id']}, inizio {result['starts_at']}."
+                 if result["status"] == "confirmed" else
+                 f"Richiesta {result['id']} registrata. Attendo la verifica del calendario o del gestionale: l'appuntamento non è ancora confermato.")
+        code=management_code(org_id,result['id'])
+        if code: reply += " Conserva il codice gestione per modifiche o cancellazioni: "+code+"."
     output = {"reply": reply, "mode": "booking_result", "appointment": result}
     with database(write=True, organization_id=org_id) as db:
         db.execute("UPDATE booking_proposals SET result_json=? WHERE id=? AND organization_id=?", (json.dumps(output), pid, org_id))
     return output
+
+
+def authorize_change(db,org,appointment,cid,uid,code_hash=''):
+    if uid is not None: return
+    conv=db.execute('SELECT * FROM conversations WHERE id=? AND organization_id=?',(cid,org)).fetchone() if cid else None
+    if not conv or conv['status']!='ai': raise HTTPException(403,'Identificazione del cliente necessaria')
+    if conv['identity_verified'] and conv['contact_id'] is not None and conv['contact_id']==appointment['contact_id']: return
+    expected=management_code(org,appointment['id'])
+    if not expected or not code_hash or not hmac.compare_digest(hashlib.sha256(expected.encode()).hexdigest(),code_hash):
+        raise HTTPException(403,'Per questa operazione servono riferimento e codice gestione ricevuti alla prenotazione')
+
+
+def propose_change(database,org,args,cid,uid):
+    code_hash=hashlib.sha256(args.management_code.encode()).hexdigest() if args.management_code else ''
+    with database(write=True,organization_id=org) as db:
+        appointment=db.execute("SELECT * FROM appointments WHERE id=? AND organization_id=? AND status<>'cancelled'",(args.appointment_id,org)).fetchone()
+        if not appointment: raise HTTPException(404,'Appuntamento non trovato')
+        authorize_change(db,org,appointment,cid,uid,code_hash)
+        if args.operation=='reschedule':
+            if args.starts_at is None or utc(args.starts_at)<=datetime.now(timezone.utc): raise HTTPException(422,'Specifica un nuovo orario futuro con fuso orario')
+            _,_,busy=slot(db,org,appointment['service_id'],args.starts_at,appointment['id'])
+            if busy: raise HTTPException(409,'Orario occupato')
+        payload={'operation':args.operation,'appointment_id':args.appointment_id,'starts_at':args.starts_at.isoformat() if args.starts_at else None,'code_hash':code_hash}
+        pid=secrets.token_urlsafe(24)
+        if cid: db.execute('UPDATE booking_proposals SET expires_at=0 WHERE organization_id=? AND conversation_id=? AND result_json IS NULL',(org,cid))
+        db.execute('INSERT INTO booking_proposals(id,organization_id,conversation_id,user_id,payload_json,expires_at) VALUES (?,?,?,?,?,?)',(pid,org,cid,uid,json.dumps(payload),int(time.time())+600))
+    return {'proposal_id':pid,'mode':'proposal','reply':f"Proposta di {'cancellazione' if args.operation=='cancel' else 'spostamento'} per appuntamento {args.appointment_id}. Scrivi CONFERMO per procedere."}
 
 
 async def respond(database, org_id, message, conversation_id=None, user_id=None):
@@ -146,6 +197,15 @@ async def respond(database, org_id, message, conversation_id=None, user_id=None)
                     db.execute("UPDATE conversations SET status='human' WHERE id=? AND organization_id=?", (conversation_id, org_id))
             return {"reply": "La segretaria AI è momentaneamente indisponibile. La richiesta necessita di un operatore.", "mode": "offline"}
     try:
+        if name == "propose_change":
+            return propose_change(database,org_id,ChangeProposal.model_validate(args),conversation_id,user_id)
+        if name == "my_appointments":
+            with database() as db:
+                conv=db.execute('SELECT * FROM conversations WHERE id=? AND organization_id=?',(conversation_id,org_id)).fetchone() if conversation_id else None
+                if not conv or not conv['identity_verified'] or not conv['contact_id']:
+                    return {'reply':'Per cercare un appuntamento, indicami il riferimento e il codice gestione.','mode':'identity_required'}
+                appointments=db.execute("SELECT id,starts_at FROM appointments WHERE organization_id=? AND contact_id=? AND status<>'cancelled' ORDER BY starts_at LIMIT 10",(org_id,conv['contact_id'])).fetchall()
+            return {'reply':'\n'.join(f"Riferimento {a['id']}, {a['starts_at']}" for a in appointments) or 'Non trovo appuntamenti attivi per te.','mode':'tool'}
         if name == "services":
             return {"reply": "\n".join(f"{s['name']}: {s['duration_minutes']} minuti, €{s['price_cents']/100:.2f}" for s in services) or "Non ci sono servizi disponibili.", "mode": "tool"}
         if name == "business_info":

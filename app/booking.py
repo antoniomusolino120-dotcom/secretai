@@ -59,6 +59,11 @@ def slot(db, org_id, service_id, starts_at, exclude_id=0):
     busy = db.execute("""SELECT id FROM appointments WHERE organization_id=? AND id<>?
         AND status<>'cancelled' AND starts_at<? AND ends_at>? LIMIT 1""",
         (org_id, exclude_id, end.isoformat(), start.isoformat())).fetchone()
+    if not busy:
+        busy=db.execute('SELECT appointment_id FROM appointment_holds WHERE organization_id=? AND appointment_id<>? AND starts_at<? AND ends_at>? LIMIT 1',(org_id,exclude_id,end.isoformat(),start.isoformat())).fetchone()
+    if not busy:
+        busy = db.execute('SELECT event_id FROM external_busy WHERE organization_id=? AND starts_at<? AND ends_at>? LIMIT 1',
+                          (org_id,end.isoformat(),start.isoformat())).fetchone()
     return start, end, busy
 
 
@@ -113,9 +118,13 @@ def create_booking(database, data, user_id=None, key=None, conversation_id=None)
             VALUES (?,?,?,?,?,?,?,?)""", (data.organization_id, data.customer, data.service_id,
             start.isoformat(), end.isoformat(), data.contact_id, status, sync))
         result = {"id": cur.lastrowid, "starts_at": start.isoformat(), "ends_at": end.isoformat(),
-                  "status": status, "sync_status": sync}
+                  "status": status, "sync_status": sync, "management_code": management_code(data.organization_id,cur.lastrowid)}
         audit(db, "appointment.created", user_id, data.organization_id, cur.lastrowid)
-        if google:
+        from app.browser_automation import enqueue_booking_automation
+        browser=enqueue_booking_automation(db,data.organization_id,cur.lastrowid,'create')
+        if browser:
+            result['status']='pending_sync';result['sync_status']='pending_browser'
+        if google and not browser:
             enqueue(db, data.organization_id, "google_upsert", {"appointment_id": cur.lastrowid}, f"google:create:{cur.lastrowid}")
         remember(db, data.organization_id, key, payload, result)
         return result
@@ -153,58 +162,57 @@ def install(database, current_user, require_org):
     def reschedule(appointment_id: int, organization_id: int, data: ChangeAppointment,
                    key: str | None = Header(None, alias="Idempotency-Key"), user_id: int = Depends(current_user)):
         require_org(user_id, organization_id)
-        payload = {"operation": "reschedule", "id": appointment_id, **data.model_dump(mode="json")}
-        with database(write=True, organization_id=organization_id) as db:
-            previous = replay(db, organization_id, key, payload)
-            if previous:
-                return previous
-            appointment = db.execute("SELECT * FROM appointments WHERE id=? AND organization_id=? AND status<>'cancelled'",
-                                     (appointment_id, organization_id)).fetchone()
-            if not appointment:
-                raise HTTPException(404, "Appuntamento non trovato")
-            if appointment["sync_status"] not in {"local", "synced"}:
-                raise HTTPException(409, "Attendi la sincronizzazione del calendario")
-            start, end, busy = slot(db, organization_id, appointment["service_id"], data.starts_at, appointment_id)
-            if busy:
-                raise HTTPException(409, "Orario occupato")
-            google = db.execute("SELECT 1 FROM google_connections WHERE organization_id=?", (organization_id,)).fetchone()
-            status, sync = ("pending_sync", "pending") if google else ("confirmed", "local")
-            db.execute("UPDATE appointments SET starts_at=?,ends_at=?,status=?,sync_status=? WHERE id=? AND organization_id=?",
-                       (start.isoformat(), end.isoformat(), status, sync, appointment_id, organization_id))
-            result = {"id": appointment_id, "starts_at": start.isoformat(), "ends_at": end.isoformat(), "status": status, "sync_status": sync}
-            if google:
-                enqueue(db, organization_id, "google_upsert", {"appointment_id": appointment_id},
-                        f"google:reschedule:{appointment_id}:{start.isoformat()}:{time.time_ns()}")
-            audit(db, "appointment.rescheduled", user_id, organization_id, appointment_id)
-            remember(db, organization_id, key, payload, result)
-            return result
+        return mutate_booking(database,organization_id,appointment_id,'reschedule',data.starts_at,user_id,key)
 
     @router.delete("/api/appointments/{appointment_id}")
     def cancel(appointment_id: int, organization_id: int, user_id: int = Depends(current_user),
                key: str | None = Header(None, alias="Idempotency-Key")):
         require_org(user_id, organization_id)
-        payload = {"operation": "cancel", "id": appointment_id}
-        with database(write=True, organization_id=organization_id) as db:
-            previous = replay(db, organization_id, key, payload)
-            if previous:
-                return previous
-            appointment = db.execute("SELECT * FROM appointments WHERE id=? AND organization_id=? AND status<>'cancelled'",
-                                     (appointment_id, organization_id)).fetchone()
-            if not appointment:
-                raise HTTPException(404, "Appuntamento non trovato")
-            # Pending external reservations can be cancelled safely by deleting
-            # their deterministic Google event ID, even after an ambiguous write.
-            google = bool(appointment["external_event_id"]) or bool(db.execute(
-                "SELECT 1 FROM google_connections WHERE organization_id=?", (organization_id,)).fetchone())
-            # Keep the slot reserved until an external cancellation is acknowledged.
-            status, sync = ("cancelling", "pending") if google else ("cancelled", "local")
-            db.execute("UPDATE appointments SET status=?,sync_status=? WHERE id=? AND organization_id=?",
-                       (status, sync, appointment_id, organization_id))
-            if google:
-                enqueue(db, organization_id, "google_delete", {"appointment_id": appointment_id}, f"google:delete:{appointment_id}")
-            audit(db, "appointment.cancelled", user_id, organization_id, appointment_id)
-            result = {"ok": True, "id": appointment_id, "status": status, "sync_status": sync}
-            remember(db, organization_id, key, payload, result)
-            return result
-
+        return mutate_booking(database,organization_id,appointment_id,'cancel',user_id=user_id,key=key)
     return router
+
+
+def management_code(org_id,appointment_id):
+    import hmac,os
+    secret=os.getenv('SECRET_AI_ENCRYPTION_KEY','')
+    return hmac.new(secret.encode(),f'booking:{org_id}:{appointment_id}'.encode(),hashlib.sha256).hexdigest()[:24] if secret else ''
+
+
+def mutate_booking(database,org_id,appointment_id,operation,starts_at=None,user_id=None,key=None,guard=None):
+    if operation not in {'reschedule','cancel'}: raise ValueError('Invalid operation')
+    payload={'operation':operation,'id':appointment_id,'starts_at':starts_at.isoformat() if starts_at else None}
+    with database(write=True,organization_id=org_id) as db:
+        appointment=db.execute('SELECT * FROM appointments WHERE id=? AND organization_id=?',(appointment_id,org_id)).fetchone()
+        if not appointment: raise HTTPException(404,'Appuntamento non trovato')
+        if guard: guard(db,appointment)
+        previous=replay(db,org_id,key,payload)
+        if previous: return previous
+        if appointment['status']=='cancelled': raise HTTPException(404,'Appuntamento non trovato')
+        google=bool(db.execute('SELECT 1 FROM google_connections WHERE organization_id=?',(org_id,)).fetchone())
+        service=db.execute('SELECT automation_json FROM services WHERE id=? AND organization_id=?',(appointment['service_id'],org_id)).fetchone()
+        if json.loads(service['automation_json']) and appointment['sync_status'] not in {'local','synced'}:
+            raise HTTPException(409,'Verifica prima l’esito dell’operazione sul gestionale')
+        if operation=='reschedule':
+            if appointment['sync_status'] not in {'local','synced'}: raise HTTPException(409,'Attendi la sincronizzazione del calendario')
+            start,end,busy=slot(db,org_id,appointment['service_id'],starts_at,appointment_id)
+            if busy: raise HTTPException(409,'Orario occupato')
+            if google or json.loads(service['automation_json']):
+                db.execute('INSERT INTO appointment_holds(organization_id,appointment_id,starts_at,ends_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING',(org_id,appointment_id,appointment['starts_at'],appointment['ends_at']))
+            status,sync=('pending_sync','pending') if google else ('confirmed','local')
+            db.execute('UPDATE appointments SET starts_at=?,ends_at=?,status=?,sync_status=? WHERE id=? AND organization_id=?',(start.isoformat(),end.isoformat(),status,sync,appointment_id,org_id))
+            result={'id':appointment_id,'starts_at':start.isoformat(),'ends_at':end.isoformat(),'status':status,'sync_status':sync}
+            from app.browser_automation import enqueue_booking_automation
+            browser=enqueue_booking_automation(db,org_id,appointment_id,operation)
+            if browser: result['status']='pending_sync';result['sync_status']='pending_browser'
+            if google and not browser: enqueue(db,org_id,'google_upsert',{'appointment_id':appointment_id},f'google:move:{appointment_id}:{time.time_ns()}')
+        else:
+            google=google or bool(appointment['external_event_id'])
+            status,sync=('cancelling','pending') if google else ('cancelled','local')
+            db.execute('UPDATE appointments SET status=?,sync_status=? WHERE id=? AND organization_id=?',(status,sync,appointment_id,org_id))
+            from app.browser_automation import enqueue_booking_automation
+            browser=enqueue_booking_automation(db,org_id,appointment_id,operation)
+            if google and not browser: enqueue(db,org_id,'google_delete',{'appointment_id':appointment_id},f'google:delete:{appointment_id}')
+            result={'ok':True,'id':appointment_id,'status':'cancelling' if browser else status,'sync_status':'pending_browser' if browser else sync}
+        audit(db,'appointment.'+operation,user_id,org_id,appointment_id)
+        remember(db,org_id,key,payload,result)
+        return result

@@ -1,0 +1,4 @@
+-r requirements.lock.txt
+faster-whisper==1.2.1
+piper-tts==1.8.0
+numpy>=1.26,<3

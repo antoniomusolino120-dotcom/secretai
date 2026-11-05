@@ -14,7 +14,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.auth import audit
-from app.booking import utc
+from app.booking import utc,enqueue
 from app.secrets import cipher, encrypt, decrypt
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -122,6 +122,7 @@ def install(database, current_user, require_org):
             db.execute("""INSERT INTO google_connections(organization_id,token_ciphertext) VALUES (?,?)
                 ON CONFLICT(organization_id) DO UPDATE SET token_ciphertext=excluded.token_ciphertext""",
                        (org_id, encrypt(tokens["refresh_token"])))
+            enqueue(db,org_id,"google_reconcile",{"calendar_id":"primary"},f"google:connect:{org_id}:{time.time_ns()}")
             audit(db, "google.connected", user_id, org_id, org_id)
         if "text/html" in request.headers.get("accept", ""):
             return RedirectResponse("/#connections", status_code=303)
@@ -145,10 +146,14 @@ def install(database, current_user, require_org):
                 raise HTTPException(422, "Seleziona un calendario scrivibile")
         read_ids = list(dict.fromkeys([data.write_calendar_id, *data.read_calendar_ids]))
         with database(write=True, organization_id=organization_id) as db:
-            if db.execute("SELECT 1 FROM appointments WHERE organization_id=? AND external_event_id IS NOT NULL AND status<>'cancelled' LIMIT 1", (organization_id,)).fetchone():
+            current=db.execute('SELECT calendar_id FROM google_connections WHERE organization_id=?',(organization_id,)).fetchone()
+            if current['calendar_id']!=data.write_calendar_id and db.execute("SELECT 1 FROM appointments WHERE organization_id=? AND external_event_id IS NOT NULL AND status<>'cancelled' LIMIT 1", (organization_id,)).fetchone():
                 raise HTTPException(409, "Calendario di scrittura bloccato finché ci sono appuntamenti sincronizzati")
             db.execute("UPDATE google_connections SET calendar_id=?,read_calendar_ids_json=? WHERE organization_id=?",
                        (data.write_calendar_id, json.dumps(read_ids), organization_id))
+            for row in db.execute('SELECT DISTINCT calendar_id FROM external_busy WHERE organization_id=?',(organization_id,)).fetchall():
+                if row['calendar_id'] not in read_ids:db.execute('DELETE FROM external_busy WHERE organization_id=? AND calendar_id=?',(organization_id,row['calendar_id']))
+            for cid in read_ids:enqueue(db,organization_id,'google_reconcile',{'calendar_id':cid},f'google:selection:{organization_id}:{cid}:{time.time_ns()}')
             audit(db, "google.calendars_selected", user_id, organization_id, organization_id)
         return {"ok": True}
 
@@ -177,6 +182,9 @@ def install(database, current_user, require_org):
             if db.execute("SELECT 1 FROM appointments WHERE organization_id=? AND status<>'cancelled' AND sync_status<>'local' LIMIT 1", (organization_id,)).fetchone():
                 raise HTTPException(409, "Gestisci gli appuntamenti collegati prima di scollegare Google")
             db.execute("DELETE FROM google_connections WHERE organization_id=?", (organization_id,))
+            db.execute('DELETE FROM google_cursors WHERE organization_id=?',(organization_id,))
+            db.execute('DELETE FROM google_watches WHERE organization_id=?',(organization_id,))
+            db.execute('DELETE FROM external_busy WHERE organization_id=?',(organization_id,))
             db.execute("DELETE FROM google_oauth_states WHERE organization_id=?", (organization_id,))
             audit(db, "google.disconnected", user_id, organization_id, organization_id)
         return {"ok": True}

@@ -36,7 +36,7 @@ def backup(engine, path):
             with sqlite3.connect(engine.url.database) as source, sqlite3.connect(temporary) as target:
                 source.backup(target)
         else:
-            subprocess.run(["pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--file", str(temporary)],
+            subprocess.run([os.getenv("PG_DUMP_BIN","pg_dump"), "--format=custom", "--no-owner", "--no-privileges", "--file", str(temporary)],
                            env=pg_environment(engine.url), check=True, capture_output=True)
         encrypted = cipher().encrypt(temporary.read_bytes())
         with path.open("xb") as output:
@@ -55,7 +55,7 @@ def restore(engine, path):
             with sqlite3.connect(temporary) as source, sqlite3.connect(engine.url.database) as target:
                 source.backup(target)
         else:
-            subprocess.run(["pg_restore", "--no-owner", "--no-privileges", "--exit-on-error", "--dbname", engine.url.database, str(temporary)],
+            subprocess.run([os.getenv("PG_RESTORE_BIN","pg_restore"), "--no-owner", "--no-privileges", "--exit-on-error", "--dbname", engine.url.database, str(temporary)],
                            env=pg_environment(engine.url), check=True, capture_output=True)
 
 

@@ -1,7 +1,10 @@
-FROM python:3.12-slim
+FROM postgres:16-bookworm AS pgtools
+FROM python:3.12-slim-bookworm
 WORKDIR /srv
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 libzstd1 liblz4-1 && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 secretai && useradd --uid 10001 --gid secretai --create-home secretai
+COPY --from=pgtools /usr/lib/postgresql/16/bin/pg_dump /usr/local/bin/pg_dump
+COPY --from=pgtools /usr/lib/postgresql/16/bin/pg_restore /usr/local/bin/pg_restore
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir -r requirements.lock.txt
 COPY app ./app

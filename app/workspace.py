@@ -54,6 +54,15 @@ class Service(BaseModel):
     duration_minutes: int = Field(ge=5, le=480)
     price_cents: int = Field(default=0, ge=0, le=10_000_000)
     active: bool = True
+    automation: dict[str,str] = Field(default_factory=dict)
+
+
+    @field_validator('automation')
+    @classmethod
+    def valid_automation(cls,value):
+        if set(value)-{'create','reschedule','cancel'} or any(not re.fullmatch('[a-f0-9]{32}',v) for v in value.values()):
+            raise ValueError('Associa procedure valide per creazione, spostamento o cancellazione')
+        return value
 
 
 class Contact(BaseModel):
@@ -121,6 +130,11 @@ def install(database, current_user, require_org):
             audit(db, "organization.settings_updated", user_id, organization_id, organization_id)
         return {"ok": True}
 
+    def validate_automations(db,data):
+        for pid in data.automation.values():
+            if not db.execute('SELECT 1 FROM browser_procedures WHERE id=? AND organization_id=? AND approved=1',(pid,data.organization_id)).fetchone():
+                raise HTTPException(422,'Procedura non approvata o appartenente a un’altra azienda')
+
     @router.get("/api/services")
     def services(organization_id: int, user_id: int = Depends(current_user)):
         require_org(user_id, organization_id)
@@ -131,8 +145,9 @@ def install(database, current_user, require_org):
     def create_service(data: Service, user_id: int = Depends(current_user)):
         require_org(user_id, data.organization_id, owner=True)
         with database(write=True, organization_id=data.organization_id) as db:
-            cur = db.execute("INSERT INTO services(organization_id,name,duration_minutes,price_cents,active) VALUES (?,?,?,?,?)",
-                             (data.organization_id, data.name, data.duration_minutes, data.price_cents, int(data.active)))
+            validate_automations(db,data)
+            cur = db.execute("INSERT INTO services(organization_id,name,duration_minutes,price_cents,active,automation_json) VALUES (?,?,?,?,?,?)",
+                             (data.organization_id, data.name, data.duration_minutes, data.price_cents, int(data.active),json.dumps(data.automation)))
             audit(db, "service.created", user_id, data.organization_id, cur.lastrowid)
             return {"id": cur.lastrowid, **data.model_dump()}
 
@@ -140,8 +155,9 @@ def install(database, current_user, require_org):
     def update_service(service_id: int, data: Service, user_id: int = Depends(current_user)):
         require_org(user_id, data.organization_id, owner=True)
         with database(write=True, organization_id=data.organization_id) as db:
-            result = db.execute("UPDATE services SET name=?,duration_minutes=?,price_cents=?,active=? WHERE id=? AND organization_id=?",
-                                (data.name, data.duration_minutes, data.price_cents, int(data.active), service_id, data.organization_id))
+            validate_automations(db,data)
+            result = db.execute("UPDATE services SET name=?,duration_minutes=?,price_cents=?,active=?,automation_json=? WHERE id=? AND organization_id=?",
+                                (data.name, data.duration_minutes, data.price_cents, int(data.active),json.dumps(data.automation), service_id, data.organization_id))
             if result.rowcount != 1:
                 raise HTTPException(404, "Servizio inesistente")
             audit(db, "service.updated", user_id, data.organization_id, service_id)

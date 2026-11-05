@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import NullPool
 
 ROOT = Path(__file__).resolve().parent.parent
-HEAD = "0005_rate_window"
+HEAD = "0006_runtime"
 ID_TABLES = {"organizations", "users", "services", "appointments", "meta_messages",
              "contacts", "conversations", "messages", "audit_events", "jobs"}
 

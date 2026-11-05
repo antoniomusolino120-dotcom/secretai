@@ -1,0 +1,41 @@
+; Fill from the chosen provider's authorized configuration. Do not allow
+; anonymous SIP, passwordless endpoints or broad identify matches.
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:5060
+; Set external_signaling_address / external_media_address for the host's public IP.
+
+[secretai-auth]
+type=auth
+auth_type=userpass
+username=REPLACE_PROVIDER_USERNAME
+password=REPLACE_PROVIDER_PASSWORD
+
+[secretai-registration]
+type=registration
+transport=transport-udp
+outbound_auth=secretai-auth
+server_uri=sip:REPLACE_PROVIDER_HOST
+client_uri=sip:REPLACE_PROVIDER_USERNAME@REPLACE_PROVIDER_HOST
+retry_interval=60
+
+[secretai-trunk]
+type=endpoint
+context=secretai-inbound
+disallow=all
+allow=alaw,ulaw
+outbound_auth=secretai-auth
+aors=secretai-trunk
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+
+[secretai-trunk]
+type=aor
+contact=sip:REPLACE_PROVIDER_HOST
+
+[secretai-identify]
+type=identify
+endpoint=secretai-trunk
+match=REPLACE_PROVIDER_SIGNALING_IP_CIDR

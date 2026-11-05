@@ -120,10 +120,24 @@ def install(database, current_user, require_org):
                 unsupported = body.startswith("[Messaggio non testuale")
                 if unsupported or (conversation and conversation["status"] == "closed"):
                     db.execute("UPDATE conversations SET status='human' WHERE id=? AND organization_id=?", (cid, org_id))
-                db.execute("UPDATE conversations SET updated_at=? WHERE id=? AND organization_id=?", (now, cid, org_id))
+                db.execute("UPDATE conversations SET updated_at=?,identity_verified=1 WHERE id=? AND organization_id=?", (now, cid, org_id))
                 enabled = db.execute("SELECT assistant_enabled FROM organizations WHERE id=?", (org_id,)).fetchone()["assistant_enabled"]
                 if enabled and not unsupported and received > now-86400 and (not conversation or conversation["status"] == "ai"):
                     enqueue(db, org_id, "ai_reply", {"message_id": message_id, "conversation_id": cid}, "ai:"+provider+":"+mid)
+        # Delivery updates are authenticated by the same raw-body HMAC.
+        for entry in objects(payload.get('entry')):
+            for change in objects(entry.get('changes')):
+                value=change.get('value',{})
+                if not isinstance(value,dict): continue
+                for receipt in objects(value.get('statuses')):
+                    remote=receipt.get('id');status=receipt.get('status')
+                    if not remote or status not in {'sent','delivered','read','failed'}:continue
+                    with database(write=True) as db:
+                        row=db.execute("SELECT id,organization_id,delivery_status FROM messages WHERE external_id=? AND direction='outbound'",('whatsapp:'+str(remote),)).fetchone()
+                        if not row:continue
+                        ranks={'pending':0,'sending':0,'sent':1,'delivered':2,'read':3,'failed':1}
+                        if ranks.get(status,0)>=ranks.get(row['delivery_status'],0):
+                            db.execute('UPDATE messages SET delivery_status=? WHERE id=? AND organization_id=?',(status,row['id'],row['organization_id']))
         return {"ok": True}
 
     @router.post("/api/meta/channels")

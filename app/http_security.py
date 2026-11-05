@@ -56,8 +56,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             response = JSONResponse({"detail": "Servizio temporaneamente non disponibile", "request_id": request_id}, status_code=503)
         response.headers.update({"X-Request-ID": request_id, "X-Content-Type-Options": "nosniff",
                                  "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
-                                 "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
-        if request.url.path.startswith("/api/"):
+                                 "Content-Security-Policy": "default-src 'self'; script-src 'self' https://connect.facebook.net; frame-src https://www.facebook.com https://web.facebook.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://graph.facebook.com https://www.facebook.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+        if request.url.path.startswith(("/api/","/internal/")):
             response.headers["Cache-Control"] = "no-store"
         if production:
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
