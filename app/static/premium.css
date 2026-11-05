@@ -1,0 +1,48 @@
+/* SecretAI · banking-grade visual system — presentation only */
+:root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--ink:#17191e;--muted:#737b88;--border:#e7e9ee;--accent:#ff610b;--green:#ffe8d9;color:#17191e;background:#f6f7f9}
+body{background:#f6f7f9;color:#17191e}
+button{background:#17191e;border-radius:12px;font-weight:650;letter-spacing:-.01em;transition:background .16s,transform .16s,box-shadow .16s}
+button:hover{filter:none;background:#32363d}button:active{transform:scale(.985)}
+button.secondary{background:#fff;border:1px solid #e2e5eb;color:#20242b}button.secondary:hover{background:#f5f6f8}
+input,select,textarea{border-radius:11px;border-color:#e1e5eb;min-height:44px}
+input:focus,select:focus,textarea:focus{outline:2px solid #ff610b55;border-color:#ff610b}
+.auth{grid-template-columns:minmax(0,1fr) minmax(400px,0.83fr);background:#fff}
+.auth-story{background:#15171b;color:#fff;padding:54px clamp(32px,5vw,90px);position:relative;overflow:hidden}
+.auth-story:after{content:"";position:absolute;width:390px;height:390px;border:1px solid #ffffff12;border-radius:50%;right:-130px;bottom:-140px;pointer-events:none}
+.auth-story h1{font-weight:650;letter-spacing:-.055em;font-size:clamp(40px,4.1vw,66px)}
+.auth-story p{color:#a7abb4}.auth-story .eyebrow{color:#ff995f}.auth-story small{color:#9297a0}
+.auth-card{max-width:470px;padding:48px}.auth-card h2{font-weight:700;letter-spacing:-.045em;font-size:38px}.auth-card .muted{font-size:14px}
+.auth-card form button[type=submit]{background:#ff610b;color:#fff;margin-top:22px}.auth-card form button[type=submit]:hover{background:#e95300}
+aside{background:#fff;color:#242830;border-right:1px solid #e8eaf0;width:258px;padding:32px 19px}
+.brand{font-size:26px;letter-spacing:-1.2px;font-weight:800;color:#14171b;gap:0}
+.brand span{color:#ff610b;font-weight:800}.brand i{color:#ff610b;font-size:19px;margin-left:7px}
+.auth-story .brand{color:#fff}
+.org-label{color:#8a909b;margin-top:48px}.org-label select{background:#f7f8fa;border-color:#e8eaf0;color:#242830}
+nav{gap:4px;margin-top:28px}nav button{color:#69717d;font-size:13px;font-weight:550;border-radius:10px;padding:12px 13px}
+nav button:hover{background:#f7f7f9;color:#17191e}
+nav button.active{background:#fff0e7;color:#d94d00;font-weight:700}
+.nav-icon{color:inherit}
+.sidebar-foot{border-color:#e8eaf0}.sidebar-foot small{color:#9298a2}.avatar{background:#fff0e7;color:#dc5405;font-weight:700}
+.content{margin-left:258px;padding:36px clamp(24px,3.2vw,60px) 0}
+header{margin-bottom:32px}header h1{font-size:30px;font-weight:720;letter-spacing:-.04em}
+.eyebrow{color:#8b919c;letter-spacing:1.2px}
+.status-pill{background:#fff;border:1px solid #e8eaf0;color:#515a66;font-size:11px;padding:9px 13px}
+.status-pill:before{background:#d2a179}.status-pill.on:before{background:#19a46a}
+.card,.stat,.channel-control,.calendar-option{border:1px solid #e7e9ee!important;border-radius:16px!important;background:#fff;box-shadow:0 3px 18px #161b2405}
+.card,.stat{padding:24px}
+.card-head h2{font-size:16px;font-weight:700;letter-spacing:-.02em}
+.stat strong{font-weight:730;font-size:32px;letter-spacing:-.045em}.stat .label,.stat small{color:#7c8490}
+.welcome,.control-intro{background:#fff!important;border:1px solid #e7e9ee;border-radius:17px!important;box-shadow:0 3px 18px #161b2405}
+.welcome h2,.control-intro h2{color:#181b20;font-weight:720;letter-spacing:-.04em}
+.welcome p,.control-intro p{color:#7c8490}
+.welcome-mark{color:#ff610b}
+.badge{background:#fff0e7;color:#bc4b08;border-radius:7px;font-weight:650}
+.badge.warn{background:#fff3df;color:#946213}.badge.bad{background:#ffeded;color:#ae4141}
+.list-row,td,.checklist li{border-color:#edf0f4}
+.thread.active{background:#fff3ec}.threads{background:#fafbfc}
+.bubble{background:#f2f4f7}.bubble.out{background:#fff0e7}
+#notice{background:#1b1e24;border-radius:12px;box-shadow:0 16px 40px #0002}
+dialog{border-color:#e8eaf0;border-radius:18px;box-shadow:0 22px 80px #0002}
+footer{color:#9aa1aa}
+@media(max-width:1100px){aside{width:205px}.content{margin-left:205px}}
+@media(max-width:760px){.auth{display:block}.auth-story{min-height:230px;padding:30px 25px}.auth-story h1{font-size:34px}.auth-card{padding:32px 24px}.content{margin-left:0;padding:22px 16px 0}.card,.stat{padding:18px}.auth-card h2{font-size:30px}}
