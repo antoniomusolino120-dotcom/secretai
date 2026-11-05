@@ -43,7 +43,7 @@ views.overview=async()=>{
  const i=await api('integrations?'+orgQuery());
  // Reloads preserve expanded sections only during this visit, never across login.
  setTimeout(()=>{for(const key of state.openHistory){const element=document.querySelector(`[data-history="${key}"]`);if(element)element.open=true}},0);
- return `<section class="control-intro"><h2>La tua segretaria, dove vuoi.</h2><p>Attiva un canale per collegarlo e scegliere gli orari.</p></section><section class="channel-grid" aria-label="Canali e orari delle risposte automatiche">${['whatsapp','instagram','voice','email'].map(channel=>channelRow(channel,state.automation.channels[channel])).join('')}</section>${calendarChoice(i)}`;
+ return `<section class="control-intro"><h2>La tua segretaria, dove vuoi.</h2><p>Attiva un canale per collegarlo e scegliere gli orari.</p></section><section class="channel-grid" aria-label="Canali e orari delle risposte automatiche">${['whatsapp','instagram','voice'].map(channel=>channelRow(channel,state.automation.channels[channel])).join('')}</section>${calendarChoice(i)}`;
 };
 
 function appointmentHistory(rows){
