@@ -6,11 +6,12 @@ Sono stati ricostruiti e verificati sul codice attuale cataloghi dei tipi di app
 
 | Prova | Esito effettivo |
 | --- | --- |
-| Suite backend | 58 test superati; il test Chromium dedicato è escluso dalla suite ordinaria |
-| Concorrenza della chat, aggiunta dopo la suite | 1 test aggiuntivo superato sullo stesso codice applicativo |
+| Suite backend | 59 test superati su SQLite e su PostgreSQL 16 nei workflow remoti; il test Chromium dedicato è escluso dalla suite ordinaria |
 | Dashboard Chromium desktop/mobile | Superata: registrazione, attività, servizio con domanda numerica, prenotazione, risposte nei dettagli, refresh, cancellazione e navigazione |
 | Runner gestionale Chromium | 1 test reale superato: registrazione, parametri, replay, verifica della prenotazione e recupero di esito incerto |
 | Sintassi e whitespace | Python compileall, JavaScript node --check e git diff --check superati |
+| PostgreSQL operativo | Backup cifrato, ripristino e importazione SQLite in sola lettura superati nel workflow remoto |
+| Container | Build API, browser, voce e Asterisk superate; verifica avvio AudioSocket superata |
 
 In totale: 59 test backend distinti, oltre alle prove Chromium. Il test del runner gestionale usa un gestionale HTTP locale reale; le integrazioni Google, Meta e Stripe nei test backend usano provider controllati.
 
@@ -33,8 +34,15 @@ Non è stato ripetuto un collaudo con modello Ollama e motori vocali reali sulla
 
 Non sono stati collegati account reali Meta/Google/Stripe, numeri telefonici pubblici, gestionali aziendali o hosting permanente. Nessun servizio a pagamento è stato attivato. Stripe resta successivo al funzionamento del prodotto; Supabase e FindMyInk non sono stati modificati.
 
-Le nuove migrazioni e immagini devono ancora superare i controlli remoti PostgreSQL e container. L'esecuzione locale PostgreSQL non è disponibile in questo ambiente perché non è consentito avviare il processo con l'utente non privilegiato richiesto dal server. I risultati remoti della precedente tranche sono conservati nei controlli della PR #2, ma non certificano questa modifica.
+Le nuove migrazioni e immagini hanno superato i controlli remoti PostgreSQL e container sul commit `a62aa8804b23a345dd1d3ecfe396a286aa8ca429`. La verifica di Asterisk controlla l’avvio e AudioSocket, non una chiamata pubblica con trascrizione e sintesi vocale.
 
 ## Pubblicazione
 
-Le modifiche sono preparate in un commit locale. Il push al repository `antoniomusolino120-dotcom/secretai` è stato bloccato dal controllo automatico, che richiede l'autorizzazione esplicita del titolare all'invio del codice a quella destinazione. Non sono stati usati percorsi alternativi per aggirare il blocco.
+Il titolare ha autorizzato esplicitamente la pubblicazione e l’integrazione dopo i controlli. Il codice è pubblicato nella [PR #3](https://github.com/antoniomusolino120-dotcom/secretai/pull/3).
+
+Verifiche remote del codice applicativo:
+
+- [Tests #50](https://github.com/antoniomusolino120-dotcom/secretai/actions/runs/42031272067): superata.
+- [Full verification #23](https://github.com/antoniomusolino120-dotcom/secretai/actions/runs/42031272109): PostgreSQL, Chromium e container superati.
+
+Questo aggiornamento del rapporto segue le prove e non modifica il codice applicativo. L’integrazione in main usa squash, così la modifica può essere annullata con un unico revert. Il repository non equivale a un’app pubblicata su hosting permanente.
