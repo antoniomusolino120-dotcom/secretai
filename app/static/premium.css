@@ -93,3 +93,20 @@ aside .secretai-logo-word{font-size:25px;color:#161a20}
 .auth-story>.brand .secretai-logo-word{color:#fff}
 .auth-story>.brand .secretai-logo-word>span{color:#ff620b}
 @media(max-width:760px){.auth-card{border-radius:27px}.auth-card input{min-height:55px}}
+
+/* Edge-to-edge immersive sign-in; no white browser-facing page gutters */
+html{min-height:100%;background:#121621}
+body{min-height:100vh;min-height:100dvh;margin:0;background:#121621}
+#auth.auth{position:fixed!important;inset:0!important;width:100%!important;height:100dvh!important;min-height:100dvh!important;max-height:none!important;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;isolation:isolate;padding:clamp(125px,18vh,195px) 18px max(28px,env(safe-area-inset-bottom))!important;background:radial-gradient(ellipse 85% 70% at 106% 103%,#ff710d 0%,#b94420 30%,transparent 73%),radial-gradient(ellipse 90% 70% at -10% -12%,#2b3b53 0%,transparent 76%),linear-gradient(145deg,#131722 0%,#1b1923 55%,#48251f 100%)!important}
+#auth.auth .auth-story{position:absolute!important;inset:0!important;min-height:100%!important;pointer-events:none}
+#auth.auth .auth-story>.brand{position:absolute;top:clamp(48px,12vh,118px);left:50%;transform:translateX(-50%);pointer-events:auto}
+#auth.auth .auth-card{flex-shrink:0;background:linear-gradient(145deg,#ffffff23,#ffffff0b 55%,#ffffff13)!important;border:1px solid #ffffff4d!important;box-shadow:inset 0 1px 0 #ffffff30,0 22px 65px #08080f4d!important;backdrop-filter:blur(32px) saturate(135%);-webkit-backdrop-filter:blur(32px) saturate(135%)}
+#auth.auth .auth-card input{background:linear-gradient(135deg,#ffffff36,#ffffff15)!important;color:#fff!important;border:1px solid #ffffff55!important;box-shadow:inset 0 1px 0 #ffffff24,0 4px 14px #00000015!important;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);caret-color:#fff}
+#auth.auth .auth-card input:-webkit-autofill{-webkit-text-fill-color:#fff;transition:background-color 99999s}
+#auth.auth .auth-card button[type=submit],#auth.auth .auth-card button.text{border:1px solid #ffffff30!important;border-radius:14px!important;background:linear-gradient(150deg,#32343eea,#0b0d14f5)!important;color:#fff!important;box-shadow:inset 0 1px 0 #ffffff36,0 10px 25px #00000030!important;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transition:transform .18s,box-shadow .18s,background .18s}
+#auth.auth .auth-card button[type=submit]:hover,#auth.auth .auth-card button.text:hover{background:linear-gradient(150deg,#43454fe8,#1a1b24f5)!important}
+#auth.auth .auth-card button:active{transform:scale(.98)}
+#auth.auth .auth-card button.text{width:100%;min-height:43px;justify-content:center;margin-top:8px;padding:10px 14px}
+#auth.auth .auth-card .hint{color:#d5cdd0}
+@media(max-width:760px){#auth.auth{padding:clamp(120px,19vh,190px) 18px max(26px,env(safe-area-inset-bottom))!important;align-items:center;justify-content:center}#auth.auth .auth-story>.brand{top:clamp(50px,10vh,100px)}#auth.auth .auth-card{width:100%;max-width:480px;padding:26px 23px}}
+@media(max-height:700px){#auth.auth{justify-content:flex-start;padding-top:125px!important}#auth.auth .auth-story>.brand{top:34px}}
