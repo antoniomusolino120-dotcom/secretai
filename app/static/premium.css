@@ -130,3 +130,6 @@ aside .brand .secretai-brand-image{width:160px;max-width:100%}
 .service-wizard .wizard-actions button{flex:1;min-height:48px;border-radius:13px}
 @keyframes wizard-in{from{opacity:.35;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
 @media(max-width:760px){#dialog{max-width:calc(100vw - 24px);width:calc(100vw - 24px);max-height:calc(100dvh - 45px);overflow-y:auto;box-sizing:border-box}.service-wizard .wizard-step{min-height:160px}}
+
+/* Prevent Safari auto-zoom on editable modal fields */
+@media(max-width:760px){#dialog input,#dialog textarea,#dialog select{font-size:16px!important}#dialog{overscroll-behavior:contain}#dialog .wizard-step[hidden],#dialog .intake-question[hidden]{display:none!important}#dialog .intake-question{margin:0;padding:14px;border:1px solid #ffffff30;border-radius:14px}#dialog .wizard-actions{position:sticky;bottom:0;padding:12px 0;background:inherit}}
