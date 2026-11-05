@@ -133,3 +133,6 @@ aside .brand .secretai-brand-image{width:160px;max-width:100%}
 
 /* Prevent Safari auto-zoom on editable modal fields */
 @media(max-width:760px){#dialog input,#dialog textarea,#dialog select{font-size:16px!important}#dialog{overscroll-behavior:contain}#dialog .wizard-step[hidden],#dialog .intake-question[hidden]{display:none!important}#dialog .intake-question{margin:0;padding:14px;border:1px solid #ffffff30;border-radius:14px}#dialog .wizard-actions{position:sticky;bottom:0;padding:12px 0;background:inherit}}
+
+/* Align company identity precisely with the center of the brand */
+@media(max-width:760px){#app aside{display:flex!important;flex-direction:column!important;align-items:center!important}#app aside>.brand{margin:0 auto 18px!important;flex-shrink:0}#app aside .org-label{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;text-align:center!important;width:100%!important;max-width:100%!important;margin:0!important;padding:0!important;box-sizing:border-box}#app aside .org-label>span,#app aside .org-label>strong{display:block!important;width:100%!important;text-align:center!important;margin:0!important;transform:none!important}#app aside .org-label>strong{margin-top:7px!important;overflow-wrap:anywhere}#app aside nav{align-self:stretch}}
