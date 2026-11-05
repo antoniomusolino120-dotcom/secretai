@@ -159,7 +159,7 @@ def test_model_tool_proposal_then_explicit_confirmation(workspace, monkeypatch):
     c, main, org, service, _ = workspace
     args = {"service_id": service, "customer": "Cliente", "starts_at": "2027-09-01T10:00:00+02:00"}
     mock_http(monkeypatch, lambda request: httpx.Response(200, json={"message": {"tool_calls": [{"function": {"name": "propose_booking", "arguments": args}}]}}))
-    result = c.post("/api/chat", json={"organization_id": org, "message": "Vorrei prenotare"}).json()
+    result = c.post("/api/chat", json={"organization_id": org, "message": "Vorrei prenotare il 1 settembre 2027 alle 10, a nome Cliente"}).json()
     assert result["mode"] == "proposal"
     assert c.get(f"/api/appointments?organization_id={org}").json() == []
     result = c.post("/api/chat", json={"organization_id": org, "message": "CONFERMO"}).json()

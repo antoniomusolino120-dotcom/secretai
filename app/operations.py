@@ -51,6 +51,7 @@ def schedule(database):
         db.execute('DELETE FROM meta_oauth_states WHERE expires_at<?',(now,))
         db.execute('DELETE FROM auth_challenges WHERE expires_at<?',(now,))
         db.execute('DELETE FROM sessions WHERE expires_at<?',(now,))
+        db.execute('DELETE FROM booking_intake_drafts WHERE expires_at<?',(now,))
 
 
 def install(database,current_user,require_org):
@@ -68,7 +69,7 @@ def install(database,current_user,require_org):
         require_org(user_id,organization_id,owner=True)
         with database() as db:
             output={}
-            for table,columns in [('contacts','id,name,email,phone,notes,created_at'),('appointments','id,customer,service_id,starts_at,ends_at,status,contact_id'),('conversations','id,contact_id,channel,status,updated_at'),('messages','id,conversation_id,direction,body,created_at,delivery_status')]:
+            for table,columns in [('contacts','id,name,email,phone,notes,created_at'),('appointments','id,customer,service_id,starts_at,ends_at,status,contact_id,intake_json'),('conversations','id,contact_id,channel,status,updated_at'),('messages','id,conversation_id,direction,body,created_at,delivery_status')]:
                 output[table]=[dict(r) for r in db.execute(f'SELECT {columns} FROM {table} WHERE organization_id=?',(organization_id,))]
         return output
     @router.delete('/api/contacts/{contact_id}/personal-data')
@@ -82,8 +83,10 @@ def install(database,current_user,require_org):
                 db.execute('DELETE FROM meta_messages WHERE organization_id=? AND provider=? AND sender_id=?',(organization_id,conv['channel'],conv['external_id']))
                 db.execute("UPDATE conversations SET external_id=?,status='closed',identity_verified=0 WHERE id=? AND organization_id=?",('erased:'+str(conv['id']),conv['id'],organization_id))
                 db.execute('DELETE FROM booking_proposals WHERE organization_id=? AND conversation_id=?',(organization_id,conv['id']))
+                db.execute('DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?',(organization_id,'conversation:'+str(conv['id'])))
+                db.execute('DELETE FROM chat_turns WHERE organization_id=? AND conversation_id=?',(organization_id,conv['id']))
             db.execute("UPDATE contacts SET name='Cliente anonimizzato',email='',phone='',notes='' WHERE id=? AND organization_id=?",(contact_id,organization_id))
-            db.execute("UPDATE appointments SET customer='Cliente anonimizzato' WHERE contact_id=? AND organization_id=?",(contact_id,organization_id))
+            db.execute("UPDATE appointments SET customer='Cliente anonimizzato',intake_json='[]' WHERE contact_id=? AND organization_id=?",(contact_id,organization_id))
             audit(db,'contact.personal_data_erased',user_id,organization_id,contact_id)
         return {'erased':True,'message':'Contenuti personali rimossi; restano riferimenti operativi anonimizzati'}
     return router

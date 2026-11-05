@@ -1,5 +1,11 @@
 # Stato: preparazione alle integrazioni
 
+## Personalizzazione aggiunta
+
+Il proprietario può configurare tipi di appuntamento, descrizioni, nomi alternativi e domande preliminari per servizio. Le risposte obbligatorie vengono verificate dal backend e salvate negli appuntamenti; la dashboard espone configurazione e dettagli. Le ambiguità note nel catalogo richiedono una scelta e gli argomenti del modello non possono aggiungere nome, giorno o ora mancanti. La chat mantiene cronologia e operazioni idempotenti. Consultare `PERSONALIZZAZIONE.md` e il rapporto di verifica aggiornato.
+
+La priorità resta il funzionamento interno, poi l'apertura ad altre attività, infine la commercializzazione. Questa modifica non attiva servizi a pagamento né certifica la telefonia completa o collegamenti esterni reali.
+
 La preparazione comprende ora anche i moduli mancanti di telefonia e Computer Use. Non equivale al collaudo commerciale su account reali: quel passaggio richiede autorizzazioni, numero SIP, gestionale e infrastruttura scelti dal titolare.
 
 | Area | Lavoro preparatorio implementato | Passaggio con accesso reale |

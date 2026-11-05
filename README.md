@@ -4,6 +4,8 @@ Segretaria AI multiazienda con backend FastAPI e dashboard responsive. Progetto 
 
 ## Stato verificabile
 
+Il catalogo dei tipi di appuntamento è ora personalizzabile: nome, descrizione, nomi alternativi, durata, prezzo e questionario preliminare per servizio. Il backend verifica le risposte obbligatorie e ne salva una copia nell'appuntamento. La chat web mantiene cronologia e contesto nell'inbox. Vedi [personalizzazione](docs/PERSONALIZZAZIONE.md) per comportamento e limiti.
+
 Sono implementati anche i runtime preparatori di telefonia e Computer Use, i collegamenti Meta self-service e la sincronizzazione Google incrementale. Le procedure dei gestionali si registrano nella dashboard e si associano ai servizi. La voce usa Whisper/Piper locali e il trasferimento Asterisk; i clienti non devono installare software.
 
 La preparazione non equivale a un lancio commerciale già collaudato. Account/consensi Google e Meta, provider/numero SIP, gestionale, Stripe e hosting richiedono ancora autorizzazione e prove reali. Consulta [stato](docs/STATUS.md), [prove eseguite](docs/VERIFICATION.md) e [runbook delle integrazioni](docs/INTEGRATION_RUNBOOK.md).

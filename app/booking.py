@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.auth import audit
+from app.intake import Answers,service_questions,validate_answers
 
 
 class AvailabilityRequest(BaseModel):
@@ -20,6 +21,7 @@ class AvailabilityRequest(BaseModel):
 class AppointmentRequest(AvailabilityRequest):
     customer: str = Field(min_length=1, max_length=120)
     contact_id: int | None = Field(default=None, gt=0)
+    intake_answers: Answers = Field(default_factory=dict,max_length=20)
 
 
 class ChangeAppointment(BaseModel):
@@ -111,12 +113,12 @@ def create_booking(database, data, user_id=None, key=None, conversation_id=None)
         if data.contact_id and not db.execute("SELECT id FROM contacts WHERE id=? AND organization_id=?",
                                              (data.contact_id, data.organization_id)).fetchone():
             raise HTTPException(404, "Cliente inesistente")
+        intake,_=validate_answers(service_questions(db,data.organization_id,data.service_id),data.intake_answers)
         google = db.execute("SELECT calendar_id FROM google_connections WHERE organization_id=?", (data.organization_id,)).fetchone()
         sync = "pending" if google else "local"
         status = "pending_sync" if google else "confirmed"
-        cur = db.execute("""INSERT INTO appointments(organization_id,customer,service_id,starts_at,ends_at,contact_id,status,sync_status)
-            VALUES (?,?,?,?,?,?,?,?)""", (data.organization_id, data.customer, data.service_id,
-            start.isoformat(), end.isoformat(), data.contact_id, status, sync))
+        cur = db.execute("""INSERT INTO appointments(organization_id,customer,service_id,starts_at,ends_at,contact_id,status,sync_status,intake_json)
+            VALUES (?,?,?,?,?,?,?,?,?)""", (data.organization_id,data.customer,data.service_id,start.isoformat(),end.isoformat(),data.contact_id,status,sync,json.dumps(intake,ensure_ascii=False)))
         result = {"id": cur.lastrowid, "starts_at": start.isoformat(), "ends_at": end.isoformat(),
                   "status": status, "sync_status": sync, "management_code": management_code(data.organization_id,cur.lastrowid)}
         audit(db, "appointment.created", user_id, data.organization_id, cur.lastrowid)

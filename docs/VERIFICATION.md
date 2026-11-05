@@ -1,34 +1,48 @@
-# Verifica del 5 novembre 2026
+# Verifica — 5 novembre 2026
 
-## Prove locali
+## Modifica corrente: personalizzazione e conversazioni
 
-- Prima tranche: 30 test backend.
-- Runtime integrazioni: 44 test superati, inclusi rinnovo, insoluto, downgrade e cancellazione Stripe con provider simulato.
-- Chromium reale: registrazione, azienda, servizio, prenotazione, refresh, cancellazione e navigazione desktop/mobile, comprese Telefonia e Gestionali.
-- Computer Use reale su gestionale HTTP locale: dimostrazione → campi parametrizzati → approvazione → replay con dati diversi → riferimento catturato → prenotazione applicativa confermata. Ripetere lo stesso run non duplica l’operazione. L’esito incerto resta sospeso e può essere risolto dopo verifica manuale.
-- Protocollo telefonico reale su socket locale con motori sostituiti: UUID/framing AudioSocket, voce bidirezionale, interruzione del saluto, trascrizione in inbox, consumi e handoff.
-- Motori vocali reali: Piper italiano Paola medium → PCM 8 kHz → Whisper small. Frase di prova sintetizzata e riconosciuta: “Buongiorno, vorrei prenotare un appuntamento per domani mattina.” Prova locale iniziale, comprensiva del caricamento: circa 11,5 s; sintesi successiva a modelli caricati: circa 0,08 s. Non è un benchmark della futura rete telefonica.
-- Controlli sintassi Python/JavaScript e `git diff --check`.
+Sono stati ricostruiti e verificati sul codice attuale cataloghi dei tipi di appuntamento, descrizioni e nomi alternativi, domande preliminari, risposte negli appuntamenti, cronologia web e controlli sui dati delle proposte.
 
-## Prove remote già acquisite
+| Prova | Esito effettivo |
+| --- | --- |
+| Suite backend | 59 test superati su SQLite e su PostgreSQL 16 nei workflow remoti; il test Chromium dedicato è escluso dalla suite ordinaria |
+| Dashboard Chromium desktop/mobile | Superata: registrazione, attività, servizio con domanda numerica, prenotazione, risposte nei dettagli, refresh, cancellazione e navigazione |
+| Runner gestionale Chromium | 1 test reale superato: registrazione, parametri, replay, verifica della prenotazione e recupero di esito incerto |
+| Sintassi e whitespace | Python compileall, JavaScript node --check e git diff --check superati |
+| PostgreSQL operativo | Backup cifrato, ripristino e importazione SQLite in sola lettura superati nel workflow remoto |
+| Container | Build API, browser, voce e Asterisk superate; verifica avvio AudioSocket superata |
 
-Sul commit applicativo `14a04556429eb6141525c48adffc851296d78087` sono verdi tutti gli otto controlli GitHub Actions (push e pull request):
+In totale: 59 test backend distinti, oltre alle prove Chromium. Il test del runner gestionale usa un gestionale HTTP locale reale; le integrazioni Google, Meta e Stripe nei test backend usano provider controllati.
 
-- test unitari;
-- PostgreSQL 16: 43 test superati, con il solo test Chromium eseguito nel job dedicato;
-- backup cifrato/ripristino PostgreSQL e importazione read-only da SQLite, incluse le sequenze;
-- Chromium desktop/mobile e registrazione/replay del gestionale;
-- build delle immagini API, browser, voce e Asterisk;
-- avvio Asterisk senza rete: modulo AudioSocket e dialplan inbound verificati.
+I nuovi casi verificano:
 
-La verifica iniziale ha rilevato e corretto la distribuzione del pacchetto Asterisk e il percorso multiarch del suo modulo audio. Il codice verificato include il conteggio dei secondi di chiamata sul tempo effettivamente trascorso, comprese le pause.
+- catalogo e domande modificabili soltanto dal proprietario;
+- tipi testuali, numerici e a scelta, campi obbligatori e facoltativi;
+- rifiuto di risposte non valide, campi sconosciuti e identificativi duplicati;
+- mancata conferma senza le risposte obbligatorie anche nelle API dirette;
+- risposte ricevute dal cliente anziché inventate dal modello;
+- richieste di dettagli durante il questionario;
+- snapshot delle risposte e invalidazione delle proposte dopo la modifica del servizio;
+- scelta esplicita quando un nome generico corrisponde a più servizi;
+- dati mancanti chiesti al cliente, date/orari italiani e confronto con gli argomenti del modello;
+- cronologia persistente, retry idempotenti, messaggi concorrenti e separazione delle aziende.
 
-Le prove remote sono consultabili nella [pull request #2](https://github.com/antoniomusolino120-dotcom/secretai/pull/2/checks). Gli aggiornamenti successivi a questo rapporto riguardano soltanto la documentazione.
+## Limiti della certificazione corrente
 
-## Confini della verifica
+Non è stato ripetuto un collaudo con modello Ollama e motori vocali reali sulla versione corrente dopo il ripristino dell'ambiente. Le prove e i tentativi della sessione precedente non certificano automaticamente il codice attuale. La telefonia completa, la qualità dell'ascolto, i tempi di risposta e i collegamenti esterni restano da verificare.
 
-- OAuth/API Meta, Google e Stripe sono testati con provider simulati; serve ancora il collaudo sugli account autorizzati.
-- Non è stata effettuata una chiamata su rete pubblica/SIP né utilizzato un gestionale aziendale reale.
-- Nessun account, numero o hosting a pagamento è stato attivato.
-- Il modello Ollama non è avviato nel runtime locale: l’installer automatico sul server scelto comprende download e verifica del tool calling.
-- La certificazione di go-live richiede rete/fornitori reali, carico sul server scelto e validazione commerciale/privacy.
+Non sono stati collegati account reali Meta/Google/Stripe, numeri telefonici pubblici, gestionali aziendali o hosting permanente. Nessun servizio a pagamento è stato attivato. Stripe resta successivo al funzionamento del prodotto; Supabase e FindMyInk non sono stati modificati.
+
+Le nuove migrazioni e immagini hanno superato i controlli remoti PostgreSQL e container sul commit `a62aa8804b23a345dd1d3ecfe396a286aa8ca429`. La verifica di Asterisk controlla l’avvio e AudioSocket, non una chiamata pubblica con trascrizione e sintesi vocale.
+
+## Pubblicazione
+
+Il titolare ha autorizzato esplicitamente la pubblicazione e l’integrazione dopo i controlli. Il codice è pubblicato nella [PR #3](https://github.com/antoniomusolino120-dotcom/secretai/pull/3).
+
+Verifiche remote del codice applicativo:
+
+- [Tests #50](https://github.com/antoniomusolino120-dotcom/secretai/actions/runs/42031272067): superata.
+- [Full verification #23](https://github.com/antoniomusolino120-dotcom/secretai/actions/runs/42031272109): PostgreSQL, Chromium e container superati.
+
+Questo aggiornamento del rapporto segue le prove e non modifica il codice applicativo. L’integrazione in main usa squash, così la modifica può essere annullata con un unico revert. Il repository non equivale a un’app pubblicata su hosting permanente.
