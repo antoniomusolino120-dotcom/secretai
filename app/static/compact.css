@@ -105,3 +105,7 @@
 #app .calendar-confirm-switch{opacity:1!important;cursor:pointer!important;flex-shrink:0!important;transition:background .15s ease}
 #app .calendar-confirm-switch[aria-checked="true"]{background:#ff5000!important;justify-content:flex-end!important}
 #app .calendar-confirm-switch:focus-visible{outline:2px solid #ff955e;outline-offset:3px}
+
+/* Slim pill switch: avoid global button styles making it circular. */
+#app .calendar-confirm-preference .calendar-confirm-switch{box-sizing:border-box!important;width:42px!important;min-width:42px!important;max-width:42px!important;height:22px!important;min-height:22px!important;max-height:22px!important;aspect-ratio:auto!important;border-radius:999px!important;padding:2px!important;line-height:normal!important}
+#app .calendar-confirm-preference .calendar-confirm-switch span{box-sizing:border-box!important;width:18px!important;height:18px!important;min-width:18px!important;min-height:18px!important;border-radius:50%!important}
