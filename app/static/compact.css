@@ -93,3 +93,15 @@
 #app .calendar-confirm-copy small{font-size:11px;line-height:1.35;color:#aeb8c9}
 #app .calendar-confirm-switch{width:46px!important;height:27px!important;min-width:46px!important;border:0!important;border-radius:30px!important;background:#6b7280!important;padding:3px!important;display:flex!important;align-items:center;justify-content:flex-start;opacity:.75;cursor:not-allowed}
 #app .calendar-confirm-switch span{display:block;width:21px;height:21px;border-radius:50%;background:#fff}
+
+/* Final mobile calendar layout: three equal compact buttons and one live switch. */
+#app .calendar-choice .calendar-next{width:100%;max-width:100%}
+#app .calendar-choice .calendar-compact-actions{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important;align-items:stretch!important}
+#app .calendar-choice .calendar-mini-btn{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:5px!important;width:100%!important;min-width:0!important;min-height:40px!important;padding:8px 3px!important;border:1px solid #ffffff30!important;border-radius:11px!important;background:#f7f8fb!important;color:#1e2430!important;font-weight:600!important;font-size:clamp(10px,2.8vw,13px)!important;line-height:1!important;white-space:nowrap!important;box-shadow:none!important}
+#app .calendar-mini-btn svg{width:14px!important;height:14px!important;flex-shrink:0}
+#app .calendar-choice .calendar-mini-danger{background:transparent!important;color:#ff7959!important;border-color:#a54b3d70!important}
+#app .calendar-confirm-preference{width:100%;box-sizing:border-box;min-height:76px;margin-top:12px!important}
+#app .calendar-confirm-symbol svg{width:23px;height:23px}
+#app .calendar-confirm-switch{opacity:1!important;cursor:pointer!important;flex-shrink:0!important;transition:background .15s ease}
+#app .calendar-confirm-switch[aria-checked="true"]{background:#ff5000!important;justify-content:flex-end!important}
+#app .calendar-confirm-switch:focus-visible{outline:2px solid #ff955e;outline-offset:3px}
