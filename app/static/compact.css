@@ -80,3 +80,16 @@
 #app nav button.active{background:#ff742918!important;color:#ff9c65!important}
 #app nav .nav-icon{display:inline-flex!important}
 @media(max-width:760px){#app aside{padding:15px 18px!important}#app .content{padding:22px 18px 118px!important}#app nav{inset:auto 0 0 0!important;transform:none;width:100%!important;max-width:none!important;border-radius:0!important;border-width:1px 0 0!important;padding:9px 6px calc(10px + env(safe-area-inset-bottom))!important}#app nav button{font-size:10px!important;min-height:52px!important}}
+
+/* Compact calendar actions and confirmation preference on Control. */
+#app .calendar-choice .calendar-next{display:block}
+#app .calendar-compact-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;width:100%;align-items:stretch}
+#app .calendar-compact-actions>*{min-width:0;min-height:39px;display:flex;align-items:center;justify-content:center;text-align:center;padding:7px 5px!important;border-radius:11px;font-size:clamp(10px,2.7vw,13px)!important;white-space:nowrap;line-height:1.1}
+#app .calendar-status-chip{border:1px solid #ffffff23;color:#aeb8c9;background:#ffffff08}
+#app .calendar-confirm-preference{display:flex;align-items:center;gap:11px;margin-top:13px;padding:12px;border:1px solid #ffffff22;border-radius:13px;background:#ffffff06}
+#app .calendar-confirm-symbol{font-size:22px;color:#ff955e;flex-shrink:0}
+#app .calendar-confirm-copy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+#app .calendar-confirm-copy strong{font-size:14px;line-height:1.2}
+#app .calendar-confirm-copy small{font-size:11px;line-height:1.35;color:#aeb8c9}
+#app .calendar-confirm-switch{width:46px!important;height:27px!important;min-width:46px!important;border:0!important;border-radius:30px!important;background:#6b7280!important;padding:3px!important;display:flex!important;align-items:center;justify-content:flex-start;opacity:.75;cursor:not-allowed}
+#app .calendar-confirm-switch span{display:block;width:21px;height:21px;border-radius:50%;background:#fff}
