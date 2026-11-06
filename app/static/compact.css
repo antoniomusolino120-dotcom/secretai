@@ -109,3 +109,6 @@
 /* Slim pill switch: avoid global button styles making it circular. */
 #app .calendar-confirm-preference .calendar-confirm-switch{box-sizing:border-box!important;width:42px!important;min-width:42px!important;max-width:42px!important;height:22px!important;min-height:22px!important;max-height:22px!important;aspect-ratio:auto!important;border-radius:999px!important;padding:2px!important;line-height:normal!important}
 #app .calendar-confirm-preference .calendar-confirm-switch span{box-sizing:border-box!important;width:18px!important;height:18px!important;min-width:18px!important;min-height:18px!important;border-radius:50%!important}
+
+/* Two calendar actions after removing the redundant confirmation shortcut. */
+#app .calendar-choice .calendar-compact-actions{grid-template-columns:repeat(2,minmax(0,1fr))!important}
