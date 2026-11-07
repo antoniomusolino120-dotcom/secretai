@@ -1,6 +1,10 @@
 """Idempotent Google event writes, with external conflict checks."""
 import hashlib
 import json
+import time
+from zoneinfo import ZoneInfo
+from datetime import datetime
+from app.jobs import enqueue
 from urllib.parse import quote
 
 import httpx
@@ -115,6 +119,20 @@ def handlers(database):
                     db.execute("UPDATE appointments SET status='confirmed',sync_status='synced',external_event_id=? WHERE id=? AND organization_id=?",
                                (eid, appointment_id, org_id))
                     db.execute('DELETE FROM appointment_holds WHERE organization_id=? AND appointment_id=?',(org_id,appointment_id))
+                    # Notify the original WhatsApp contact only after Google confirms the event.
+                    conv=db.execute("SELECT c.id FROM conversations c WHERE c.organization_id=? AND c.channel='whatsapp' AND c.contact_id=? AND c.status='ai' ORDER BY c.id DESC LIMIT 1",(org_id,appointment['contact_id'])).fetchone()
+                    if conv:
+                        from app.channel_controls import policy
+                        revision=policy(db,org_id,'whatsapp')['revision']
+                        tz=db.execute('SELECT timezone FROM organizations WHERE id=?',(org_id,)).fetchone()['timezone']
+                        when=datetime.fromisoformat(appointment['starts_at']).astimezone(ZoneInfo(tz)).strftime('%d/%m/%Y alle %H:%M')
+                        content=f"Ti confermo l'appuntamento per {appointment['service']} il {when}, a nome di {appointment['customer']}."
+                        external=f"calendar-confirmed:{appointment_id}"
+                        existing=db.execute("SELECT id FROM messages WHERE organization_id=? AND external_id=?",(org_id,external)).fetchone()
+                        if not existing:
+                            mid=db.execute("INSERT INTO messages(organization_id,conversation_id,direction,body,created_at,delivery_status,external_id) VALUES (?,?,'outbound',?,?,'pending',?)",(org_id,conv['id'],content,int(time.time()),external)).lastrowid
+                            enqueue(db,org_id,'meta_send',{'message_id':mid,'automation_revision':revision},external)
+
         if conflict:
             raise AttentionRequired("External calendar conflict; reservation remains unconfirmed")
 
