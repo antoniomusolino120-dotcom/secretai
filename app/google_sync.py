@@ -87,7 +87,8 @@ def handlers(database):
                                     details.append(str(answer.get("label", answer.get("question", "Nota"))) + ": " + str(answer.get("answer", answer.get("value", ""))))
                     except (ValueError, TypeError):
                         pass
-                    body = {"summary": "SecretAI — " + appointment["service"] + " — " + appointment["customer"],
+                    details.append("Stato: confermato")
+                    body = {"summary": appointment["customer"] + " — " + appointment["service"] + " | SecretAI",
                             "description": "\n".join(details),
                             "start": {"dateTime": appointment["starts_at"]}, "end": {"dateTime": appointment["ends_at"]},
                             "extendedProperties": {"private": {"secretai_org": str(org_id), "secretai_appointment": str(appointment_id)}}}
