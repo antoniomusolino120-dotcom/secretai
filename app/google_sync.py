@@ -20,6 +20,25 @@ def event_id(org_id, appointment_id):
 def handlers(database):
     async def sync(job, payload):
         org_id, appointment_id = job["organization_id"], payload["appointment_id"]
+        def notify(db, appt, action):
+            if not appt['contact_id']:
+                return
+            conv=db.execute("SELECT id FROM conversations WHERE organization_id=? AND channel='whatsapp' AND contact_id=? AND status='ai' ORDER BY id DESC LIMIT 1",(org_id,appt['contact_id'])).fetchone()
+            if not conv:
+                return
+            from app.channel_controls import policy
+            revision=policy(db,org_id,'whatsapp')['revision']
+            tz=db.execute("SELECT timezone FROM organizations WHERE id=?",(org_id,)).fetchone()['timezone']
+            when=datetime.fromisoformat(appt['starts_at']).astimezone(ZoneInfo(tz)).strftime('%d/%m/%Y alle %H:%M')
+            if action=='cancelled':
+                content=f"Ti confermo che l'appuntamento per {appt['service']} del {when} è stato cancellato."
+            else:
+                content=f"Ti confermo l'appuntamento per {appt['service']} il {when}, a nome di {appt['customer']}."
+            external=f"calendar-{action}:{appointment_id}:{appt['starts_at']}"
+            if db.execute("SELECT id FROM messages WHERE organization_id=? AND external_id=?",(org_id,external)).fetchone():
+                return
+            mid=db.execute("INSERT INTO messages(organization_id,conversation_id,direction,body,created_at,delivery_status,external_id) VALUES (?,?,'outbound',?,?,'pending',?)",(org_id,conv['id'],content,int(time.time()),external)).lastrowid
+            enqueue(db,org_id,'meta_send',{'message_id':mid,'automation_revision':revision},external)
         token = await access_token(database, org_id)
         with database(write=True, organization_id=org_id) as db:
             appointment = db.execute("""SELECT a.*,s.name AS service,s.duration_minutes,s.price_cents,c.phone AS customer_phone,c.email AS customer_email FROM appointments a JOIN services s
@@ -42,6 +61,7 @@ def handlers(database):
                         result.raise_for_status()
                     db.execute("UPDATE appointments SET status='cancelled',sync_status='synced' WHERE id=? AND organization_id=?", (appointment_id, org_id))
                     db.execute('DELETE FROM appointment_holds WHERE organization_id=? AND appointment_id=?',(org_id,appointment_id))
+                    notify(db, appointment, 'cancelled')
                     return
                 # Google freeBusy includes our own existing event. Use event listing
                 # on the write calendar so it can be excluded by deterministic ID.
@@ -119,19 +139,8 @@ def handlers(database):
                     db.execute("UPDATE appointments SET status='confirmed',sync_status='synced',external_event_id=? WHERE id=? AND organization_id=?",
                                (eid, appointment_id, org_id))
                     db.execute('DELETE FROM appointment_holds WHERE organization_id=? AND appointment_id=?',(org_id,appointment_id))
-                    # Notify the original WhatsApp contact only after Google confirms the event.
-                    conv=db.execute("SELECT c.id FROM conversations c WHERE c.organization_id=? AND c.channel='whatsapp' AND c.contact_id=? AND c.status='ai' ORDER BY c.id DESC LIMIT 1",(org_id,appointment['contact_id'])).fetchone()
-                    if conv:
-                        from app.channel_controls import policy
-                        revision=policy(db,org_id,'whatsapp')['revision']
-                        tz=db.execute('SELECT timezone FROM organizations WHERE id=?',(org_id,)).fetchone()['timezone']
-                        when=datetime.fromisoformat(appointment['starts_at']).astimezone(ZoneInfo(tz)).strftime('%d/%m/%Y alle %H:%M')
-                        content=f"Ti confermo l'appuntamento per {appointment['service']} il {when}, a nome di {appointment['customer']}."
-                        external=f"calendar-confirmed:{appointment_id}"
-                        existing=db.execute("SELECT id FROM messages WHERE organization_id=? AND external_id=?",(org_id,external)).fetchone()
-                        if not existing:
-                            mid=db.execute("INSERT INTO messages(organization_id,conversation_id,direction,body,created_at,delivery_status,external_id) VALUES (?,?,'outbound',?,?,'pending',?)",(org_id,conv['id'],content,int(time.time()),external)).lastrowid
-                            enqueue(db,org_id,'meta_send',{'message_id':mid,'automation_revision':revision},external)
+                    # Send a distinct confirmation for each successful calendar revision.
+                    notify(db, appointment, 'confirmed')
 
         if conflict:
             raise AttentionRequired("External calendar conflict; reservation remains unconfirmed")
