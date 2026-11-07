@@ -270,17 +270,16 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         if not appointment or not conv or appointment['contact_id']!=conv['contact_id']:
             with database(write=True,organization_id=org_id) as db:db.execute("DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?",(org_id,move_scope))
             return {'mode':'clarification','reply':'Non trovo più questa prenotazione. Quale appuntamento vuoi spostare?'}
-        match=re.search(r'\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{4}))?\s*(?:alle|ore)?\s*(\d{1,2})[:.](\d{2})\b',message.casefold())
-        if not match:return {'mode':'clarification','reply':'Indicami la nuova data e ora, per esempio: 12/11/2026 alle 15:30.'}
+        from app.booking_language import facts
+        parsed=facts([message],tz)
+        if not parsed['has_day'] or not parsed['has_time']:
+            return {'mode':'clarification','reply':'Per quale giorno e a che ora preferisci spostarlo?'}
         try:
-            day,month,year,hour,minute=match.groups()
-            now=datetime.now(ZoneInfo(tz))
-            year=int(year) if year else now.year
-            target=datetime(year,int(month),int(day),int(hour),int(minute),tzinfo=ZoneInfo(tz))
-            if target<=now:raise ValueError('past')
+            target=datetime.combine(parsed['day'],parsed['time'],ZoneInfo(tz))
+            if target<=datetime.now(ZoneInfo(tz)):raise ValueError('past')
             result=propose_change(database,org_id,ChangeProposal(appointment_id=appointment['id'],operation='reschedule',starts_at=target),conversation_id,user_id)
-        except (ValueError,HTTPException) as e:
-            return {'mode':'clarification','reply':'Questo orario non è disponibile o non è valido. Indicami un altro giorno e orario.'}
+        except (ValueError,HTTPException):
+            return {'mode':'clarification','reply':'Non riesco a fissare questo orario. Quale altro orario preferisci?'}
         with database(write=True,organization_id=org_id) as db:db.execute("DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?",(org_id,move_scope))
         return result
     # Cancellation intent is deterministic: never send it to the general NLU fallback.
