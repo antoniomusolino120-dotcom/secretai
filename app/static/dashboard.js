@@ -24,10 +24,12 @@ actions['channel-configure']=channel=>{
 actions['channel-connect']=async channel=>{
  const p=state.automation.channels[channel];
  if(channel==='whatsapp'&&Number(state.org)===2){
+  const target=$('#dialog .setup-connection')||$('#dialog-body');
+  target.querySelectorAll('[data-whatsapp-test-status]').forEach(node=>node.remove());
   const status=document.createElement('p');
+  status.dataset.whatsappTestStatus='true';
   status.setAttribute('role','status');
   status.textContent='Verifica del numero WhatsApp di prova con Meta in corso…';
-  const target=$('#dialog .setup-connection')||$('#dialog-body');
   target.appendChild(status);
   try{
    await send('meta/test-whatsapp/connect?'+orgQuery(),{});
