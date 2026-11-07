@@ -34,7 +34,8 @@ function startWhatsApp(pin){
   if(!hint){hint=document.createElement('p');hint.dataset.metaHelp='1';hint.className='subtext';hint.style.marginTop='12px';form.append(hint)}
   hint.textContent=message;hint.style.color=error?'#b33':'';
  };
- const restore=()=>{if(button?.isConnected){button.disabled=false;button.textContent='Riprova con Meta'}};
+ const restore=()=>{if(button?.isConnected){button.disabled=false;button.textContent='Riprova con Meta';button.removeAttribute('aria-busy')}};
+ const waiting=(message)=>{if(button?.isConnected){button.disabled=true;button.textContent='◌  In attesa di Meta…';button.setAttribute('aria-busy','true')}setStatus(message)};
  const listener=event=>{
   if(!['https://www.facebook.com','https://web.facebook.com'].includes(event.origin))return;
   let data;try{data=typeof event.data==='string'?JSON.parse(event.data):event.data}catch{return}
@@ -56,7 +57,7 @@ function startWhatsApp(pin){
    setStatus('Meta ha autorizzato l’accesso, ma non ha restituito un numero WhatsApp valido. Completa la selezione del numero su Meta.',true);restore();return;
   }
   completed=true;cleanup();
-  setStatus('Autorizzazione ricevuta. Verifica del numero WhatsApp in corso…');
+  waiting('Autorizzazione ricevuta. Verifica del numero WhatsApp in corso…');
   try{
    await send('meta/oauth/whatsapp/complete',{state:config.state,code,waba_id:assets.waba_id,phone_number_id:assets.phone_number_id,pin:pin||''});
    notify('WhatsApp collegato');
@@ -68,11 +69,12 @@ function startWhatsApp(pin){
   }
  }
  window.addEventListener('message',listener);
+ waiting('Apertura di Meta in corso. Completa la procedura nella finestra di Meta…');
  setTimeout(()=>{if(!completed){cleanup();restore();if(code&&!assets)setStatus('Autorizzazione ricevuta, ma Meta non ha restituito i dati del numero. Riapri il collegamento e seleziona il numero.',true)}},120000);
  window.FB.login(response=>{
   loginReturned=true;
   code=response?.authResponse?.code||null;
-  if(code){setStatus('Autorizzazione ricevuta. Attendo i dati del numero WhatsApp da Meta…');finish()}
+  if(code){waiting('Autorizzazione ricevuta. Attendo i dati del numero WhatsApp da Meta…');finish()}
   else{restore();setStatus('Accesso Meta non completato. Controlla la finestra di Meta e riprova.',true)}
  },{config_id:config.config_id,response_type:'code',override_default_response_type:true,extras:config.extras});
 }
@@ -86,6 +88,6 @@ document.addEventListener('submit',event=>{const form=event.target,handlers={
  'automation-binding-form':async d=>{const s=state.services.find(s=>s.id===Number(d.get('service_id'))),automation={};for(const op of ['create','reschedule','cancel'])if(d.get(op))automation[op]=d.get(op);await send('services/'+s.id,{organization_id:state.org,name:s.name,duration_minutes:s.duration_minutes,price_cents:s.price_cents,active:Boolean(s.active),automation,description:s.description||'',aliases:JSON.parse(s.aliases_json||'[]'),intake_questions:JSON.parse(s.intake_questions_json||'[]')},'PUT')},
  'browser-resolution-form':async d=>{await send(`browser/runs/${form.dataset.id}/resolve?${orgQuery()}`,Object.fromEntries(d))},
  'whatsapp-signup-form':async d=>{await startWhatsApp(d.get('pin'))},
-};if(!handlers[form.id])return;event.preventDefault();if(form.id==='whatsapp-signup-form'){const button=form.querySelector('button[type="submit"]');if(button?.disabled)return;if(button){button.disabled=true;button.textContent='Apertura di Meta…'}try{startWhatsApp(null);setTimeout(()=>{if(button?.isConnected&&button.textContent==='Apertura di Meta…'){button.disabled=false;button.textContent='Riprova con Meta';const hint=form.querySelector('[data-meta-help]')||document.createElement('p');hint.dataset.metaHelp='1';hint.className='subtext';hint.style.marginTop='12px';hint.textContent='Se non si è aperta la finestra di Meta, apri SecretAI direttamente in Safari, disattiva temporaneamente il blocco popup per questo sito e riprova. Se il problema continua, segnalacelo.';button.after(hint)}},7000)}catch(error){if(button){button.disabled=false;button.textContent='Riprova con Meta'}notify(error.message||'Impossibile avviare Meta',true)}return}task(async()=>{await handlers[form.id](new FormData(form));if($('#dialog').open)$('#dialog').close();await render()})});
+};if(!handlers[form.id])return;event.preventDefault();if(form.id==='whatsapp-signup-form'){const button=form.querySelector('button[type="submit"]');if(button?.disabled)return;if(button){button.disabled=true;button.textContent='Apertura di Meta…'}try{startWhatsApp(null)}catch(error){if(button){button.disabled=false;button.textContent='Riprova con Meta'}notify(error.message||'Impossibile avviare Meta',true)}return}task(async()=>{await handlers[form.id](new FormData(form));if($('#dialog').open)$('#dialog').close();await render()})});
 
 document.addEventListener('change',event=>{if(event.target.id==='browser-mode')state.browserMode=event.target.value});
