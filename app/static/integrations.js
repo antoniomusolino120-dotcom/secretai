@@ -32,6 +32,6 @@ document.addEventListener('submit',event=>{const form=event.target,handlers={
  'automation-binding-form':async d=>{const s=state.services.find(s=>s.id===Number(d.get('service_id'))),automation={};for(const op of ['create','reschedule','cancel'])if(d.get(op))automation[op]=d.get(op);await send('services/'+s.id,{organization_id:state.org,name:s.name,duration_minutes:s.duration_minutes,price_cents:s.price_cents,active:Boolean(s.active),automation,description:s.description||'',aliases:JSON.parse(s.aliases_json||'[]'),intake_questions:JSON.parse(s.intake_questions_json||'[]')},'PUT')},
  'browser-resolution-form':async d=>{await send(`browser/runs/${form.dataset.id}/resolve?${orgQuery()}`,Object.fromEntries(d))},
  'whatsapp-signup-form':async d=>{await startWhatsApp(d.get('pin'))},
-};if(!handlers[form.id])return;event.preventDefault();task(async()=>{await handlers[form.id](new FormData(form));if($('#dialog').open)$('#dialog').close();await render()})});
+};if(!handlers[form.id])return;event.preventDefault();if(form.id==='whatsapp-signup-form'){try{startWhatsApp(new FormData(form).get('pin'))}catch(error){notify(error.message||'Impossibile avviare Meta',true)}return}task(async()=>{await handlers[form.id](new FormData(form));if($('#dialog').open)$('#dialog').close();await render()})});
 
 document.addEventListener('change',event=>{if(event.target.id==='browser-mode')state.browserMode=event.target.value});
