@@ -22,7 +22,60 @@ Object.assign(actions,{
  'meta-oauth':async provider=>{if(provider==='instagram'){const r=await send(`meta/oauth/${provider}/start?${orgQuery()}`);location.assign(r.authorization_url);return}await prepareWhatsApp();dialog('Collega WhatsApp',`<form id="whatsapp-signup-form"><div style="display:flex;align-items:center;gap:14px;margin:8px 0 22px"><div style="width:52px;height:52px;border-radius:16px;background:#e8f9ee;display:grid;place-items:center;flex-shrink:0"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#19a864" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.7 7.4L3 20l1.2-4.6a8.5 8.5 0 1 1 16.3-3.9Z"/><path d="M8.8 8.5c-.5.4-.6 1.2-.2 2.1.8 1.8 2.3 3.2 4.1 4 .9.4 1.7.3 2.1-.2l.5-.8-2.2-1.1-.8.8c-1.1-.5-1.9-1.3-2.4-2.4l.8-.8-1.1-2.2-.8.6Z"/></svg></div><div><strong style="display:block;font-size:16px">WhatsApp Business</strong><span style="display:block;color:#737987;font-size:13px;margin-top:3px">Collegamento sicuro tramite Meta</span></div></div><p class="subtext" style="margin-bottom:22px">Accedi con Meta per scegliere il numero WhatsApp da collegare a SecretAI. Non dovrai copiare token o codici.</p><button type="submit" style="width:100%;min-height:48px;border-radius:14px">Continua con Meta</button></form>`)},
 });
 async function prepareWhatsApp(){const config=await send('meta/oauth/whatsapp/start?'+orgQuery());if(!window.FB){await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://connect.facebook.net/it_IT/sdk.js';script.onload=resolve;script.onerror=()=>reject(Error('Impossibile caricare Meta'));document.head.append(script)})}window.FB.init({appId:config.app_id,version:config.version||'v27.0',cookie:false,xfbml:false});state.whatsappConfig=config}
-function startWhatsApp(pin){const config=state.whatsappConfig;if(!window.FB||!config)throw Error('Riapri il collegamento Meta');let code=null,assets=null,finished=false;async function finish(){if(finished||!code||!assets)return;finished=true;window.removeEventListener('message',listener);await task(async()=>{await send('meta/oauth/whatsapp/complete',{state:config.state,code,waba_id:assets.waba_id,phone_number_id:assets.phone_number_id,pin});notify('WhatsApp collegato');await render()})}function listener(event){if(!['https://www.facebook.com','https://web.facebook.com'].includes(event.origin))return;let data;try{data=typeof event.data==='string'?JSON.parse(event.data):event.data}catch{return}if(data?.type==='WA_EMBEDDED_SIGNUP'&&data.event==='FINISH'){assets=data.data;finish()}}window.addEventListener('message',listener);setTimeout(()=>window.removeEventListener('message',listener),600000);window.FB.login(response=>{code=response?.authResponse?.code;if(code)finish();else{window.removeEventListener('message',listener);notify('Collegamento Meta annullato',true)}},{config_id:config.config_id,response_type:'code',override_default_response_type:true,extras:config.extras})}
+function startWhatsApp(pin){
+ const config=state.whatsappConfig;
+ if(!window.FB||!config)throw Error('Riapri il collegamento Meta');
+ let code=null,assets=null,completed=false,loginReturned=false;
+ const button=document.querySelector('#whatsapp-signup-form button[type="submit"]');
+ const setStatus=(message,error=false)=>{
+  const form=document.querySelector('#whatsapp-signup-form');
+  if(!form)return;
+  let hint=form.querySelector('[data-meta-help]');
+  if(!hint){hint=document.createElement('p');hint.dataset.metaHelp='1';hint.className='subtext';hint.style.marginTop='12px';form.append(hint)}
+  hint.textContent=message;hint.style.color=error?'#b33':'';
+ };
+ const restore=()=>{if(button?.isConnected){button.disabled=false;button.textContent='Riprova con Meta'}};
+ const listener=event=>{
+  if(!['https://www.facebook.com','https://web.facebook.com'].includes(event.origin))return;
+  let data;try{data=typeof event.data==='string'?JSON.parse(event.data):event.data}catch{return}
+  if(data?.type!=='WA_EMBEDDED_SIGNUP')return;
+  if(data.event==='FINISH'){
+   const next=data.data||{};
+   assets={waba_id:String(next.waba_id||''),phone_number_id:String(next.phone_number_id||'')};
+   finish();
+  }else if(data.event==='CANCEL'||data.event==='ERROR'){
+   setStatus('Meta non ha completato la selezione del numero WhatsApp. Riprova e termina tutti i passaggi.',true);
+   restore();
+  }
+ };
+ const cleanup=()=>window.removeEventListener('message',listener);
+ async function finish(){
+  if(completed||!code||!assets)return;
+  if(!/^\\d+$/.test(assets.waba_id)||!/^\\d+$/.test(assets.phone_number_id)){
+   setStatus('Meta ha autorizzato l’accesso, ma non ha restituito un numero WhatsApp valido. Completa la selezione del numero su Meta.',true);restore();return;
+  }
+  completed=true;cleanup();
+  setStatus('Autorizzazione ricevuta. Verifica del numero WhatsApp in corso…');
+  try{
+   await send('meta/oauth/whatsapp/complete',{state:config.state,code,waba_id:assets.waba_id,phone_number_id:assets.phone_number_id,pin:pin||''});
+   notify('WhatsApp collegato');
+   const modal=document.querySelector('#dialog');if(modal?.open)modal.close();
+   await render();
+  }catch(error){
+   setStatus('Meta ha autorizzato l’accesso, ma SecretAI non ha completato il collegamento: '+(error.message||'errore sconosciuto')+'. Riprova il collegamento.',true);
+   restore();notify(error.message||'Collegamento WhatsApp non completato',true);
+  }
+ }
+ window.addEventListener('message',listener);
+ setTimeout(()=>{if(!completed){cleanup();restore();if(code&&!assets)setStatus('Autorizzazione ricevuta, ma Meta non ha restituito i dati del numero. Riapri il collegamento e seleziona il numero.',true)}},120000);
+ window.FB.login(response=>{
+  loginReturned=true;
+  code=response?.authResponse?.code||null;
+  if(code){setStatus('Autorizzazione ricevuta. Attendo i dati del numero WhatsApp da Meta…');finish()}
+  else{restore();setStatus('Accesso Meta non completato. Controlla la finestra di Meta e riprova.',true)}
+ },{config_id:config.config_id,response_type:'code',override_default_response_type:true,extras:config.extras});
+}
+
 document.addEventListener('click',event=>{if(event.target.id!=='browser-screen')return;const rect=event.target.getBoundingClientRect(),mode=$('#browser-mode').value;task(async()=>{const result=await send(`browser/sessions/${state.browser.id}/action?${orgQuery()}`,{action:mode,x:Math.floor((event.clientX-rect.left)*1280/rect.width),y:Math.floor((event.clientY-rect.top)*900/rect.height)});if(result.selector)state.browserSelector=result.selector;state.browser={...state.browser,...result};await render()})});
 document.addEventListener('submit',event=>{const form=event.target,handlers={
  'voice-form':async d=>{await send('voice/routes'+(form.dataset.id?'/'+form.dataset.id:'')+'?'+orgQuery(),{name:d.get('name'),transfer_channel:d.get('transfer_channel'),greeting:d.get('greeting'),enabled:d.has('enabled')},form.dataset.id?'PUT':'POST')},
