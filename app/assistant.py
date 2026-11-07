@@ -229,6 +229,24 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
     if proposal:
         try:return confirm(database,org_id,proposal['id'],conversation_id,user_id)
         except HTTPException as e:return {'mode':'tool_error','reply':str(e.detail)}
+    # Cancellation intent is deterministic: never send it to the general NLU fallback.
+    cancel_intent=bool(re.search(r'\b(?:elimina|eliminare|cancella|cancellare|disdici|disdire|annulla|annullare)\b', normalized)) and bool(re.search(r'\b(?:appuntamento|prenotazione|visita)\b',normalized))
+    if cancel_intent:
+        with database() as db:
+            conv=db.execute('SELECT contact_id FROM conversations WHERE id=? AND organization_id=?',(conversation_id,org_id)).fetchone() if conversation_id else None
+            appointments=db.execute("SELECT id,contact_id,starts_at,service_id FROM appointments WHERE organization_id=? AND status NOT IN ('cancelled','cancelling') ORDER BY id DESC LIMIT 100",(org_id,)).fetchall()
+        supplied_codes=re.findall(r'\b[a-f0-9]{32}\b',message.casefold())
+        matching=[a for a in appointments if any(hmac.compare_digest(management_code(org_id,a['id']) or '',code) for code in supplied_codes)]
+        if not matching and conv and conv['contact_id']:
+            matching=[a for a in appointments if a['contact_id']==conv['contact_id']]
+        if len(matching)==1:
+            a=matching[0]
+            code=next((code for code in supplied_codes if hmac.compare_digest(management_code(org_id,a['id']) or '',code)), '')
+            try:
+                return propose_change(database,org_id,ChangeProposal(appointment_id=a['id'],operation='cancel',management_code=code),conversation_id,user_id)
+            except HTTPException as e:
+                return {'mode':'clarification','reply':'Non riesco ancora a verificare la prenotazione. Puoi indicarmi il codice di gestione ricevuto alla conferma?'}
+        return {'mode':'clarification','reply':'Per cancellare l’appuntamento, inviami il codice di gestione ricevuto alla prenotazione.' if not matching else 'Hai più appuntamenti attivi. Quale desideri cancellare?'}
     handoff=bool(re.search(r'\b(?:voglio|vorrei|posso|potrei|fammi|passami|mettimi|desidero|chiedo|preferisco|parlare|sentire|contattare)\b.{0,65}\b(?:operatore|persona|umano|responsabile|addetto)\b|^\s*(?:operatore|persona vera|essere umano)\s*(?:per favore|grazie)?\s*[?!]?$', message.casefold()))
     info=any(v in message.casefold() for v in ('quanto dura','quanto costa','prezzo','dettagli','in cosa consiste','cosa comprende','come si svolge','più informazioni'))
     if ambiguous and not draft and not handoff:return details_reply(['service'],ambiguous)
