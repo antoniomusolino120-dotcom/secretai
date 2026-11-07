@@ -39,9 +39,10 @@ function startWhatsApp(pin){
   if(!['https://www.facebook.com','https://web.facebook.com'].includes(event.origin))return;
   let data;try{data=typeof event.data==='string'?JSON.parse(event.data):event.data}catch{return}
   if(data?.type!=='WA_EMBEDDED_SIGNUP')return;
-  if(data.event==='FINISH'){
+  if(data.event==='FINISH'||data.event==='FINISH_ONLY_WABA'||data.event==='FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'){
    const next=data.data||{};
-   assets={waba_id:String(next.waba_id||''),phone_number_id:String(next.phone_number_id||'')};
+   assets={waba_id:String(next.waba_id||next.whatsapp_business_account_id||''),phone_number_id:String(next.phone_number_id||next.phone_id||'')};
+   if(!assets.phone_number_id){setStatus('Meta ha autorizzato l’account WhatsApp, ma non ha selezionato un numero. Completa anche il passaggio relativo al numero su Meta.',true);restore()}
    finish();
   }else if(data.event==='CANCEL'||data.event==='ERROR'){
    setStatus('Meta non ha completato la selezione del numero WhatsApp. Riprova e termina tutti i passaggi.',true);
