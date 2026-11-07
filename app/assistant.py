@@ -507,8 +507,9 @@ def handlers(database):
             # Never leave an incoming message unanswered because the NLU failed.
             # Log only the exception class, not private customer text or credentials.
             import logging
-            logging.getLogger(__name__).error("ai_reply_failed org=%s conversation=%s error_type=%s",
-                                              org_id, cid, type(exc).__name__)
+            logging.getLogger(__name__).error("ai_reply_failed org=%s conversation=%s error_type=%s source=%s line=%s",
+                                              org_id, cid, type(exc).__name__,
+                                              getattr(exc, "filename", None), getattr(exc, "lineno", None))
             result = {'mode':'offline','reply':'Ci sono! Ho avuto un problema tecnico e non voglio rischiare di modificare un appuntamento senza verificare. Riprova tra poco, per favore.'}
         with database(write=True, organization_id=org_id) as db:
             current = db.execute("SELECT status FROM conversations WHERE id=? AND organization_id=?", (cid, org_id)).fetchone()
