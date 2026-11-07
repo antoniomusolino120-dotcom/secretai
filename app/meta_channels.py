@@ -142,6 +142,44 @@ def install(database, current_user, require_org):
                             db.execute('UPDATE messages SET delivery_status=? WHERE id=? AND organization_id=?',(status,row['id'],row['organization_id']))
         return {"ok": True}
 
+    @router.post("/api/meta/test-whatsapp/connect")
+    async def connect_test_whatsapp(organization_id: int, user_id: int = Depends(current_user)):
+        """Bind the dedicated Meta test number, without Embedded Signup or browser tokens."""
+        require_org(user_id, organization_id, owner=True)
+        allowed = os.getenv("WHATSAPP_TEST_ORG_ID", "")
+        if not allowed or str(organization_id) != allowed:
+            raise HTTPException(403, "Test WhatsApp non abilitato per questa azienda")
+        phone_id = os.getenv("WHATSAPP_TEST_PHONE_NUMBER_ID", "")
+        waba_id = os.getenv("WHATSAPP_TEST_WABA_ID", "")
+        token = os.getenv("WHATSAPP_TEST_ACCESS_TOKEN", "")
+        if not (phone_id.isdecimal() and waba_id.isdecimal() and token):
+            raise HTTPException(503, "Credenziali WhatsApp di prova incomplete")
+        base = graph_base("whatsapp")
+        async with httpx.AsyncClient(timeout=20) as client:
+            try:
+                result = await client.get(base + "/" + waba_id + "/phone_numbers",
+                    headers={"Authorization": "Bearer " + token}, params={"fields": "id", "limit": 100})
+                result.raise_for_status()
+                numbers = result.json().get("data", [])
+                if not any(str(item.get("id")) == phone_id for item in numbers):
+                    raise HTTPException(422, "Il numero di prova non appartiene al WABA indicato")
+            except httpx.HTTPError:
+                raise HTTPException(422, "Meta non ha autorizzato la verifica del numero di prova")
+        with database(write=True, organization_id=organization_id) as db:
+            existing = db.execute("SELECT organization_id FROM meta_channels WHERE provider='whatsapp' AND external_id=?", (phone_id,)).fetchone()
+            if existing and existing["organization_id"] != organization_id:
+                raise HTTPException(409, "Numero di prova già associato a un'altra azienda")
+            other = db.execute("SELECT external_id FROM meta_channels WHERE organization_id=? AND provider='whatsapp' AND external_id<>?", (organization_id, phone_id)).fetchone()
+            if other:
+                raise HTTPException(409, "Scollega prima il numero WhatsApp esistente")
+            db.execute("INSERT INTO meta_channels(organization_id,provider,external_id) VALUES (?,'whatsapp',?) ON CONFLICT(provider,external_id) DO NOTHING", (organization_id, phone_id))
+            db.execute("""INSERT INTO channel_credentials(organization_id,provider,token_ciphertext,expires_at)
+                VALUES (?,'whatsapp',?,NULL)
+                ON CONFLICT(organization_id,provider) DO UPDATE SET token_ciphertext=excluded.token_ciphertext,expires_at=NULL""",
+                (organization_id, encrypt(token)))
+            audit(db, "meta.test_connected", user_id, organization_id, "whatsapp")
+        return {"connected": True, "provider": "whatsapp", "test": True}
+
     @router.post("/api/meta/channels")
     async def connect(data: Channel, user_id: int = Depends(current_user)):
         require_org(user_id, data.organization_id, owner=True)
