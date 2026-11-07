@@ -42,6 +42,14 @@ def facts(utterances,timezone):
             clock=time(hour,minute) if 0<=hour<24 else None
         elif (m:=re.search(r'(?<!\d)([0-2]?\d):([0-5]\d)(?!\d)',text)):
             if int(m[1])<24:clock=time(int(m[1]),int(m[2]))
+        # Also accept a name appended after a complete date/time, e.g.
+        # "Domani alle 10, Alessandro Fragola", without asking again.
+        if not name and candidate is not None and clock is not None:
+            tail=re.search(r'\b(?:alle|ore)\s+(?:\d{1,2}|'+NUMBER_PATTERN+r')(?:[:.][0-5]\d)?\s*[,;]\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]{1,100})\s*$',body,re.I)
+            if tail:
+                value=tail[1].strip(' .,-')
+                if value and not re.search(r'\b(?:domani|oggi|dopodomani|prenotare|tavolo)\b',value,re.I):
+                    name=value
         m=re.search(r'\b(?:mi chiamo|a nome)\s+([^.,!?;\n]+)',body,re.I)
         if m:
             value=re.split(r'\s+(?:per|il giorno|domani|alle)\s+',m[1],maxsplit=1,flags=re.I)[0].strip()
