@@ -231,6 +231,32 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
     if proposal:
         try:return confirm(database,org_id,proposal['id'],conversation_id,user_id)
         except HTTPException as e:return {'mode':'tool_error','reply':str(e.detail)}
+    # Pending reschedule: keep the appointment selection across WhatsApp turns.
+    move_scope='reschedule:'+scope
+    with database() as db:
+        move=db.execute("SELECT payload_json FROM booking_intake_drafts WHERE organization_id=? AND scope=? AND expires_at>?",(org_id,move_scope,int(time.time()))).fetchone()
+    if move and conversation_id:
+        data=json.loads(move['payload_json'])
+        with database() as db:
+            conv=db.execute("SELECT contact_id FROM conversations WHERE id=? AND organization_id=?",(conversation_id,org_id)).fetchone()
+            appointment=db.execute("SELECT * FROM appointments WHERE id=? AND organization_id=?",(data['appointment_id'],org_id)).fetchone()
+            tz=db.execute("SELECT timezone FROM organizations WHERE id=?",(org_id,)).fetchone()['timezone']
+        if not appointment or not conv or appointment['contact_id']!=conv['contact_id']:
+            with database(write=True,organization_id=org_id) as db:db.execute("DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?",(org_id,move_scope))
+            return {'mode':'clarification','reply':'Non trovo più questa prenotazione. Quale appuntamento vuoi spostare?'}
+        match=re.search(r'\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{4}))?\s*(?:alle|ore)?\s*(\d{1,2})[:.](\d{2})\b',message.casefold())
+        if not match:return {'mode':'clarification','reply':'Indicami la nuova data e ora, per esempio: 12/11/2026 alle 15:30.'}
+        try:
+            day,month,year,hour,minute=match.groups()
+            now=datetime.now(ZoneInfo(tz))
+            year=int(year) if year else now.year
+            target=datetime(year,int(month),int(day),int(hour),int(minute),tzinfo=ZoneInfo(tz))
+            if target<=now:raise ValueError('past')
+            result=propose_change(database,org_id,ChangeProposal(appointment_id=appointment['id'],operation='reschedule',starts_at=target),conversation_id,user_id)
+        except (ValueError,HTTPException) as e:
+            return {'mode':'clarification','reply':'Questo orario non è disponibile o non è valido. Indicami un altro giorno e orario.'}
+        with database(write=True,organization_id=org_id) as db:db.execute("DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?",(org_id,move_scope))
+        return result
     # Cancellation intent is deterministic: never send it to the general NLU fallback.
     change_intent=bool(re.search(r'\b(?:elimina|eliminare|cancella|cancellare|disdici|disdire|annulla|annullare|sposta|spostare|cambia|cambiare|posticipa|anticipa)\b',normalized)) and bool(re.search(r'\b(?:appuntamento|prenotazione|visita)\b',normalized))
     if change_intent and conversation_id:
@@ -245,7 +271,10 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
             return f"{a['name']} del {when}"
         if len(appointments)>1:return {'mode':'clarification','reply':'Quale appuntamento vuoi modificare? '+ '; '.join(display(a) for a in appointments)}
         a=appointments[0]
-        if operation=='reschedule':return {'mode':'clarification','reply':f"Vuoi spostare l'appuntamento per {display(a)}? Dimmi la nuova data e ora che preferisci."}
+        if operation=='reschedule':
+            with database(write=True,organization_id=org_id) as db:
+                db.execute("INSERT INTO booking_intake_drafts(organization_id,scope,payload_json,questions_json,expires_at) VALUES (?,?,?,?,?) ON CONFLICT(organization_id,scope) DO UPDATE SET payload_json=excluded.payload_json,expires_at=excluded.expires_at",(org_id,move_scope,json.dumps({'appointment_id':a['id']}),'[]',int(time.time())+1800))
+            return {'mode':'clarification','reply':f"Vuoi spostare l'appuntamento per {display(a)}? Dimmi la nuova data e ora che preferisci."}
         try:
             return propose_change(database,org_id,ChangeProposal(appointment_id=a['id'],operation='cancel'),conversation_id,user_id)
         except HTTPException as e:return {'mode':'clarification','reply':str(e.detail)}
