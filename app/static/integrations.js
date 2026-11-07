@@ -52,7 +52,7 @@ function startWhatsApp(pin){
  const cleanup=()=>window.removeEventListener('message',listener);
  async function finish(){
   if(completed||!code||!assets)return;
-  if(!/^\\d+$/.test(assets.waba_id)||!/^\\d+$/.test(assets.phone_number_id)){
+  if(!/^[0-9]+$/.test(assets.waba_id)||!/^[0-9]+$/.test(assets.phone_number_id)){
    setStatus('Meta ha autorizzato l’accesso, ma non ha restituito un numero WhatsApp valido. Completa la selezione del numero su Meta.',true);restore();return;
   }
   completed=true;cleanup();
