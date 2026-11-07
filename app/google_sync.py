@@ -18,13 +18,13 @@ def handlers(database):
         org_id, appointment_id = job["organization_id"], payload["appointment_id"]
         token = await access_token(database, org_id)
         with database(write=True, organization_id=org_id) as db:
-            appointment = db.execute("""SELECT a.*,s.name AS service FROM appointments a JOIN services s
-                ON s.id=a.service_id AND s.organization_id=a.organization_id WHERE a.id=? AND a.organization_id=?""",
+            appointment = db.execute("""SELECT a.*,s.name AS service,s.duration_minutes,s.price_cents,c.phone AS customer_phone,c.email AS customer_email FROM appointments a JOIN services s
+                ON s.id=a.service_id AND s.organization_id=a.organization_id LEFT JOIN contacts c ON c.id=a.contact_id AND c.organization_id=a.organization_id WHERE a.id=? AND a.organization_id=?""",
                 (appointment_id, org_id)).fetchone()
             connection = db.execute("SELECT * FROM google_connections WHERE organization_id=?", (org_id,)).fetchone()
             if not appointment or not connection:
                 raise AttentionRequired("Calendar or reservation no longer available")
-            if appointment["sync_status"] == "synced" or appointment["status"] == "cancelled":
+            if appointment["status"] == "cancelled":
                 return
             if job["kind"] == "google_upsert" and appointment["status"] == "cancelling":
                 return
@@ -66,7 +66,29 @@ def handlers(database):
                 if conflict:
                     db.execute("UPDATE appointments SET sync_status='attention' WHERE id=? AND organization_id=?", (appointment_id, org_id))
                 else:
-                    body = {"summary": "SecretAI — " + appointment["service"],
+                    details = [
+                        "Cliente: " + appointment["customer"],
+                        "Servizio: " + appointment["service"],
+                        "Durata: " + str(appointment["duration_minutes"]) + " minuti",
+                    ]
+                    if appointment["price_cents"] is not None:
+                        details.append("Prezzo: " + f"{appointment['price_cents'] / 100:.2f}" + " EUR")
+                    if appointment["customer_phone"]:
+                        details.append("Telefono: " + appointment["customer_phone"])
+                    if appointment["customer_email"]:
+                        details.append("Email: " + appointment["customer_email"])
+                    try:
+                        intake = json.loads(appointment["intake_json"] or "[]")
+                        if isinstance(intake, dict):
+                            details.extend(str(k) + ": " + str(v) for k, v in intake.items() if v is not None)
+                        elif isinstance(intake, list):
+                            for answer in intake:
+                                if isinstance(answer, dict):
+                                    details.append(str(answer.get("label", answer.get("question", "Nota"))) + ": " + str(answer.get("answer", answer.get("value", ""))))
+                    except (ValueError, TypeError):
+                        pass
+                    body = {"summary": "SecretAI — " + appointment["service"] + " — " + appointment["customer"],
+                            "description": "\\n".join(details),
                             "start": {"dateTime": appointment["starts_at"]}, "end": {"dateTime": appointment["ends_at"]},
                             "extendedProperties": {"private": {"secretai_org": str(org_id), "secretai_appointment": str(appointment_id)}}}
                     existing = await client.get(CALENDAR_URL+prefix+"/"+eid, headers=headers)
