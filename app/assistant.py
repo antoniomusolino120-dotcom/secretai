@@ -501,7 +501,15 @@ def handlers(database):
             consume(database, org_id, "messages", 1, "channel:"+str(payload["message_id"]))
         except HTTPException:
             return
-        result = await respond(database, org_id, row["body"], conversation_id=cid, policy_revision=revision)
+        try:
+            result = await respond(database, org_id, row["body"], conversation_id=cid, policy_revision=revision)
+        except Exception as exc:
+            # Never leave an incoming message unanswered because the NLU failed.
+            # Log only the exception class, not private customer text or credentials.
+            import logging
+            logging.getLogger(__name__).error("ai_reply_failed org=%s conversation=%s error_type=%s",
+                                              org_id, cid, type(exc).__name__)
+            result = {'mode':'offline','reply':'Ci sono! Ho avuto un problema tecnico e non voglio rischiare di modificare un appuntamento senza verificare. Riprova tra poco, per favore.'}
         with database(write=True, organization_id=org_id) as db:
             current = db.execute("SELECT status FROM conversations WHERE id=? AND organization_id=?", (cid, org_id)).fetchone()
             if result['mode'] == 'paused' or not permitted(db, org_id, conv['channel'], revision):
