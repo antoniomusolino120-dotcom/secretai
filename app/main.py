@@ -85,3 +85,49 @@ def integrations(organization_id: int, user_id: int = Depends(current_user)):
 
 from app.channel_controls import install as install_controls
 app.include_router(install_controls(database, current_user, require_org))
+
+# Single-instance test deployment: run the transactional outbox worker alongside the API.
+# Production should use a separately managed worker service instead.
+if os.getenv("SECRET_AI_EMBEDDED_WORKER") == "1":
+    import asyncio
+    from contextlib import asynccontextmanager
+    from app.jobs import run_once
+    from app.google_sync import handlers as google_handlers
+    from app.meta_channels import handlers as meta_handlers
+    from app.assistant import handlers as assistant_handlers
+    from app.billing import handlers as billing_handlers
+    from app.browser_automation import handlers as browser_handlers
+    from app.google_reconcile import handlers as reconcile_handlers
+    from app.meta_oauth import handlers as oauth_handlers
+    from app.operations import schedule
+
+    async def _embedded_worker():
+        handlers = {**google_handlers(database), **meta_handlers(database),
+                    **assistant_handlers(database), **billing_handlers(database),
+                    **browser_handlers(database), **reconcile_handlers(database),
+                    **oauth_handlers(database)}
+        while True:
+            try:
+                schedule(database)
+                processed = await run_once(database, handlers)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logging.getLogger("secretai.worker").exception("Embedded worker iteration failed")
+                processed = False
+            if not processed:
+                await asyncio.sleep(2)
+
+    @asynccontextmanager
+    async def _worker_lifespan(application):
+        worker = asyncio.create_task(_embedded_worker(), name="secretai-test-worker")
+        try:
+            yield
+        finally:
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
+
+    app.router.lifespan_context = _worker_lifespan
