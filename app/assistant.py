@@ -305,9 +305,15 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         with database(write=True,organization_id=org_id) as db:db.execute("DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?",(org_id,move_scope))
         return result
     # Cancellation intent is deterministic: never send it to the general NLU fallback.
-    change_intent=bool(re.search(r'\b(?:elimina|eliminare|cancella|cancellare|disdici|disdire|annulla|annullare|sposta|spostare|cambia|cambiare|posticipa|anticipa)\b',normalized)) and bool(re.search(r'\b(?:appuntamento|prenotazione|visita)\b',normalized))
+    # Natural Italian inflections and pronouns: "spostiamolo", "spostalo",
+    # "ok ora spostiamolo", "cambiamolo", "posticipiamolo".
+    change_verb=bool(re.search(r'\b(?:spost\w*|cambi\w*|posticip\w*|anticip\w*|rimand\w*|cancell\w*|annull\w*|disdic\w*|elimin\w*)\b',normalized))
+    has_appointment=bool(re.search(r'\b(?:appuntamento|prenotazione|visita)\b',normalized))
+    refers_to_it=bool(re.search(r'\b(?:spost\w*lo|cambi\w*lo|posticip\w*lo|anticip\w*lo|rimand\w*lo|cancell\w*lo|annull\w*lo)\b',normalized))
+    change_intent=change_verb and (has_appointment or refers_to_it)
+
     if change_intent and conversation_id:
-        operation='cancel' if re.search(r'\b(?:elimina|eliminare|cancella|cancellare|disdici|disdire|annulla|annullare)\b',normalized) else 'reschedule'
+        operation='cancel' if re.search(r'\b(?:elimin\w*|cancell\w*|disdic\w*|annull\w*)\b',normalized) else 'reschedule'
         with database() as db:
             conv=db.execute('SELECT contact_id FROM conversations WHERE id=? AND organization_id=? AND channel=?',(conversation_id,org_id,'whatsapp')).fetchone()
             appointments=db.execute("SELECT a.id,a.starts_at,s.name FROM appointments a JOIN services s ON s.id=a.service_id AND s.organization_id=a.organization_id WHERE a.organization_id=? AND a.contact_id=? AND a.status NOT IN ('cancelled','cancelling') ORDER BY a.starts_at",(org_id,conv['contact_id'] if conv else -1)).fetchall()
