@@ -78,7 +78,7 @@ def install(database,current_user,require_org):
             return {'authorization_url':'https://www.instagram.com/oauth/authorize?'+urlencode({'client_id':client_id,'redirect_uri':redirect,'response_type':'code','scope':'instagram_business_basic,instagram_business_manage_messages','state':state,'enable_fb_login':'0','force_authentication':'1'})}
         config_id=os.getenv('META_WHATSAPP_CONFIG_ID','')
         if not config_id: raise HTTPException(503,'Configurazione Embedded Signup mancante')
-        return {'state':state,'app_id':client_id,'config_id':config_id,'version':os.getenv('META_GRAPH_VERSION',''),'extras':json.loads(os.getenv('META_SIGNUP_EXTRAS_JSON','{}'))}
+        return {'state':state,'app_id':client_id,'config_id':config_id,'version':os.getenv('META_GRAPH_VERSION') or 'v27.0','extras':json.loads(os.getenv('META_SIGNUP_EXTRAS_JSON','{}'))}
     @router.get('/api/meta/oauth/instagram/callback')
     async def instagram_callback(request:Request,state:str,code:str='',error:str='',user_id:int=Depends(current_user)):
         org=consume(state,user_id,'instagram')
