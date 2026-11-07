@@ -4,7 +4,7 @@ import json
 import time
 from zoneinfo import ZoneInfo
 from datetime import datetime
-from app.jobs import enqueue
+from app.booking import enqueue
 from urllib.parse import quote
 
 import httpx
