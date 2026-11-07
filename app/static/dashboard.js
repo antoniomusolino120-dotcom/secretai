@@ -23,6 +23,24 @@ actions['channel-configure']=channel=>{
 };
 actions['channel-connect']=async channel=>{
  const p=state.automation.channels[channel];
+ if(channel==='whatsapp'&&Number(state.org)===2){
+  const status=document.createElement('p');
+  status.setAttribute('role','status');
+  status.textContent='Verifica del numero WhatsApp di prova con Meta in corso…';
+  const target=$('#dialog .setup-connection')||$('#dialog-body');
+  target.appendChild(status);
+  try{
+   await send('meta/test-whatsapp/connect?'+orgQuery(),{});
+   status.textContent='Numero WhatsApp di prova collegato.';
+   notify('Numero WhatsApp di prova collegato');
+   if($('#dialog').open)$('#dialog').close();
+   await render();
+  }catch(error){
+   status.textContent='Collegamento non riuscito: '+error.message;
+   throw error;
+  }
+  return;
+ }
  // A newly connected account must stay off until the owner explicitly enables it.
  if(!p.connected){
   const form=$('#dialog .channel-schedule');
