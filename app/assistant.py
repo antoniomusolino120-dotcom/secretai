@@ -147,6 +147,7 @@ def authorize_change(db,org,appointment,cid,uid,code_hash=''):
     if uid is not None: return
     conv=db.execute('SELECT * FROM conversations WHERE id=? AND organization_id=?',(cid,org)).fetchone() if cid else None
     if not conv or conv['status']!='ai': raise HTTPException(403,'Identificazione del cliente necessaria')
+    if conv['contact_id'] is not None and conv['contact_id']==appointment['contact_id'] and conv['channel']=='whatsapp': return
     if conv['identity_verified'] and conv['contact_id'] is not None and conv['contact_id']==appointment['contact_id']: return
     expected=management_code(org,appointment['id'])
     if not expected or not code_hash or not hmac.compare_digest(hashlib.sha256(expected.encode()).hexdigest(),code_hash):
@@ -167,7 +168,8 @@ def propose_change(database,org,args,cid,uid):
         pid=secrets.token_urlsafe(24)
         if cid: db.execute('UPDATE booking_proposals SET expires_at=0 WHERE organization_id=? AND conversation_id=? AND result_json IS NULL',(org,cid))
         db.execute('INSERT INTO booking_proposals(id,organization_id,conversation_id,user_id,payload_json,expires_at,created_at) VALUES (?,?,?,?,?,?,?)',(pid,org,cid,uid,json.dumps(payload),int(time.time())+600,time.time_ns()))
-    return {'proposal_id':pid,'mode':'proposal','reply':f"Proposta di {'cancellazione' if args.operation=='cancel' else 'spostamento'} per appuntamento {args.appointment_id}. Scrivi CONFERMO per procedere."}
+    with database() as db: db_timezone=db.execute('SELECT timezone FROM organizations WHERE id=?',(org,)).fetchone()['timezone']
+    return {'proposal_id':pid,'mode':'proposal','reply':f"Vuoi confermare la {'cancellazione' if args.operation=='cancel' else 'modifica'} dell'appuntamento del {datetime.fromisoformat(appointment['starts_at']).astimezone(ZoneInfo(db_timezone)).strftime('%d/%m/%Y alle %H:%M')}? Rispondi sì per procedere."}
 
 
 async def respond(database, org_id, message, conversation_id=None, user_id=None, policy_revision=None):
@@ -230,23 +232,23 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         try:return confirm(database,org_id,proposal['id'],conversation_id,user_id)
         except HTTPException as e:return {'mode':'tool_error','reply':str(e.detail)}
     # Cancellation intent is deterministic: never send it to the general NLU fallback.
-    cancel_intent=bool(re.search(r'\b(?:elimina|eliminare|cancella|cancellare|disdici|disdire|annulla|annullare)\b', normalized)) and bool(re.search(r'\b(?:appuntamento|prenotazione|visita)\b',normalized))
-    if cancel_intent:
+    change_intent=bool(re.search(r'\b(?:elimina|eliminare|cancella|cancellare|disdici|disdire|annulla|annullare|sposta|spostare|cambia|cambiare|posticipa|anticipa)\b',normalized)) and bool(re.search(r'\b(?:appuntamento|prenotazione|visita)\b',normalized))
+    if change_intent and conversation_id:
+        operation='cancel' if re.search(r'\b(?:elimina|eliminare|cancella|cancellare|disdici|disdire|annulla|annullare)\b',normalized) else 'reschedule'
         with database() as db:
-            conv=db.execute('SELECT contact_id FROM conversations WHERE id=? AND organization_id=?',(conversation_id,org_id)).fetchone() if conversation_id else None
-            appointments=db.execute("SELECT id,contact_id,starts_at,service_id FROM appointments WHERE organization_id=? AND status NOT IN ('cancelled','cancelling') ORDER BY id DESC LIMIT 100",(org_id,)).fetchall()
-        supplied_codes=re.findall(r'\b[a-f0-9]{32}\b',message.casefold())
-        matching=[a for a in appointments if any(hmac.compare_digest(management_code(org_id,a['id']) or '',code) for code in supplied_codes)]
-        if not matching and conv and conv['contact_id']:
-            matching=[a for a in appointments if a['contact_id']==conv['contact_id']]
-        if len(matching)==1:
-            a=matching[0]
-            code=next((code for code in supplied_codes if hmac.compare_digest(management_code(org_id,a['id']) or '',code)), '')
-            try:
-                return propose_change(database,org_id,ChangeProposal(appointment_id=a['id'],operation='cancel',management_code=code),conversation_id,user_id)
-            except HTTPException as e:
-                return {'mode':'clarification','reply':'Non riesco ancora a verificare la prenotazione. Puoi indicarmi il codice di gestione ricevuto alla conferma?'}
-        return {'mode':'clarification','reply':'Per cancellare l’appuntamento, inviami il codice di gestione ricevuto alla prenotazione.' if not matching else 'Hai più appuntamenti attivi. Quale desideri cancellare?'}
+            conv=db.execute('SELECT contact_id FROM conversations WHERE id=? AND organization_id=? AND channel=?',(conversation_id,org_id,'whatsapp')).fetchone()
+            appointments=db.execute("SELECT a.id,a.starts_at,s.name FROM appointments a JOIN services s ON s.id=a.service_id AND s.organization_id=a.organization_id WHERE a.organization_id=? AND a.contact_id=? AND a.status NOT IN ('cancelled','cancelling') ORDER BY a.starts_at",(org_id,conv['contact_id'] if conv else -1)).fetchall()
+            timezone_name=db.execute('SELECT timezone FROM organizations WHERE id=?',(org_id,)).fetchone()['timezone']
+        if not appointments:return {'mode':'clarification','reply':'Non trovo appuntamenti attivi associati a questo numero WhatsApp.'}
+        def display(a):
+            when=datetime.fromisoformat(a['starts_at']).astimezone(ZoneInfo(timezone_name)).strftime('%d/%m/%Y alle %H:%M')
+            return f"{a['name']} del {when}"
+        if len(appointments)>1:return {'mode':'clarification','reply':'Quale appuntamento vuoi modificare? '+ '; '.join(display(a) for a in appointments)}
+        a=appointments[0]
+        if operation=='reschedule':return {'mode':'clarification','reply':f"Vuoi spostare l'appuntamento per {display(a)}? Dimmi la nuova data e ora che preferisci."}
+        try:
+            return propose_change(database,org_id,ChangeProposal(appointment_id=a['id'],operation='cancel'),conversation_id,user_id)
+        except HTTPException as e:return {'mode':'clarification','reply':str(e.detail)}
     handoff=bool(re.search(r'\b(?:voglio|vorrei|posso|potrei|fammi|passami|mettimi|desidero|chiedo|preferisco|parlare|sentire|contattare)\b.{0,65}\b(?:operatore|persona|umano|responsabile|addetto)\b|^\s*(?:operatore|persona vera|essere umano)\s*(?:per favore|grazie)?\s*[?!]?$', message.casefold()))
     info=any(v in message.casefold() for v in ('quanto dura','quanto costa','prezzo','dettagli','in cosa consiste','cosa comprende','come si svolge','più informazioni'))
     if ambiguous and not draft and not handoff:return details_reply(['service'],ambiguous)
