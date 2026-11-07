@@ -232,7 +232,7 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
     if proposal:
         try:return confirm(database,org_id,proposal['id'],conversation_id,user_id)
         except HTTPException as e:return {'mode':'tool_error','reply':str(e.detail)}
-    handoff=bool(re.search(r'\b(?:voglio|vorrei|posso|potrei|fammi|passami|mettimi|desidero|chiedo|preferisco|parlare|sentire|contattare)\b.{0,65}\b(?:operatore|persona|umano|responsabile|addetto)\b|\b(?:operatore|persona vera|essere umano)\s*(?:per favore|grazie)?\s*[?!]?
+    handoff=bool(re.search(r'\b(?:voglio|vorrei|posso|potrei|fammi|passami|mettimi|desidero|chiedo|preferisco|parlare|sentire|contattare)\b.{0,65}\b(?:operatore|persona|umano|responsabile|addetto)\b|^\s*(?:operatore|persona vera|essere umano)\s*(?:per favore|grazie)?\s*[?!]?$', message.casefold()))
     info=any(v in message.casefold() for v in ('quanto dura','quanto costa','prezzo','dettagli','in cosa consiste','cosa comprende','come si svolge','più informazioni'))
     if ambiguous and not draft and not handoff:return details_reply(['service'],ambiguous)
     if not draft and not info:
