@@ -395,10 +395,12 @@ def details_reply(needed,services,selected=None):
     needed=list(dict.fromkeys(needed))
     if selected and 'service' in needed:needed.remove('service')
     if not needed:needed=['request']
-    labels={'service':'quale servizio ti interessa','day':'in quale giorno','time':'a che ora','customer':'a quale nome','request':'come posso aiutarti'}
-    text='Mi dici '+', '.join(labels[k] for k in needed)+'?'
-    if 'service' in needed and services:text+=' Puoi scegliere: '+', '.join(v['name'] for v in services)+'.'
-    return {'mode':'clarification','reply':text,'needed':needed}
+    order=['service','day','time','customer','request']
+    question=next((k for k in order if k in needed),'request')
+    labels={'service':'Quale servizio ti interessa?','day':'Per quale giorno?','time':'A che ora preferisci?','customer':'A quale nome prenoto?','request':'Come posso aiutarti?'}
+    reply=labels[question]
+    if question=='service' and services:reply+=' I servizi disponibili sono: '+', '.join(v['name'] for v in services)+'.'
+    return {'mode':'clarification','reply':reply,'needed':[question]}
 
 
 def install(database, current_user, require_org):
