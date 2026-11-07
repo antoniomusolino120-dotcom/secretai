@@ -395,7 +395,14 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         from app.channel_controls import assert_current
         with database() as db: assert_current(db, org_id)
         if name=='greet':return {'mode':'tool','reply':f'Buongiorno, sono la segretaria virtuale di {org["name"]}. Come posso aiutarti?'}
-        if name=='ask_details':return details_reply(DetailsInput.model_validate(args).needed,services,selected)
+        if name=='ask_details':
+            from app.booking_language import facts
+            known=facts(utterances,org['timezone'])
+            requested=DetailsInput.model_validate(args).needed
+            missing=[v for v in requested if not (v=='service' and selected or v=='day' and known['has_day'] or v=='time' and known['has_time'] or v=='customer' and known['customer'])]
+            if not missing and selected:
+                missing=[v for v in ['day','time','customer'] if not (v=='day' and known['has_day'] or v=='time' and known['has_time'] or v=='customer' and known['customer'])]
+            return details_reply(missing,services,selected)
         if name=='service_info':
             sid=ServiceInput.model_validate(args).service_id;service=next((v for v in services if v['id']==sid),None)
             if not service:raise HTTPException(404,'Servizio inesistente')
@@ -418,10 +425,13 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
             return {'mode':'tool','reply':'L’orario è occupato.' if busy else 'Lo slot è libero nell’agenda locale; occorre verificare Google.' if google else 'Lo slot risulta disponibile al momento della verifica.'}
         if name=='my_appointments':
             with database() as db:
-                conv=db.execute('SELECT * FROM conversations WHERE id=? AND organization_id=?',(conversation_id,org_id)).fetchone() if conversation_id else None
-                if not conv or not conv['identity_verified'] or not conv['contact_id']:return {'mode':'identity_required','reply':'Per cercare un appuntamento servono riferimento e codice gestione.'}
-                rows=db.execute("SELECT id,starts_at FROM appointments WHERE organization_id=? AND contact_id=? AND status<>'cancelled' ORDER BY starts_at LIMIT 10",(org_id,conv['contact_id'])).fetchall()
-            return {'mode':'tool','reply':'\n'.join(f'Riferimento {v["id"]}, {v["starts_at"]}' for v in rows) or 'Non trovo appuntamenti attivi per te.'}
+                conv=db.execute("SELECT contact_id,channel FROM conversations WHERE id=? AND organization_id=?",(conversation_id,org_id)).fetchone() if conversation_id else None
+                if not conv or conv['channel']!='whatsapp' or not conv['contact_id']:
+                    return {'mode':'identity_required','reply':'Per verificare i tuoi appuntamenti, scrivici dal numero WhatsApp utilizzato per prenotare.'}
+                rows=db.execute("SELECT a.starts_at,s.name AS service FROM appointments a JOIN services s ON s.id=a.service_id WHERE a.organization_id=? AND a.contact_id=? AND a.status NOT IN ('cancelled','cancelling') ORDER BY a.starts_at LIMIT 10",(org_id,conv['contact_id'])).fetchall()
+            if not rows:return {'mode':'tool','reply':'Non trovo appuntamenti attivi associati a questo numero.'}
+            lines=[f"{v['service']}: {datetime.fromisoformat(v['starts_at']).astimezone(ZoneInfo(org['timezone'])).strftime('%d/%m/%Y alle %H:%M')}" for v in rows]
+            return {'mode':'tool','reply':'I tuoi appuntamenti sono: '+'; '.join(lines)+'.'}
         if name=='handoff':
             if not handoff:return details_reply(['request'],services,selected)
             if conversation_id:
