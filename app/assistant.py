@@ -126,19 +126,16 @@ def confirm(database, org_id, pid, conversation_id=None, user_id=None):
     else:
         result = create_booking(database, AppointmentRequest.model_validate(payload), user_id,
                                 key="proposal:"+pid, conversation_id=conversation_id)
-        reply = (f"Prenotazione confermata, riferimento {result['id']}, inizio {result['starts_at']}."
-                 if result["status"] == "confirmed" else
-                 f"Richiesta {result['id']} registrata. Attendo la verifica del calendario o del gestionale: l'appuntamento non è ancora confermato.")
         with database() as db:
             service=db.execute("SELECT name,duration_minutes,price_cents FROM services WHERE id=? AND organization_id=?", (payload['service_id'],org_id)).fetchone()
             org=db.execute("SELECT timezone FROM organizations WHERE id=?", (org_id,)).fetchone()
-        if service:
-            local_when=datetime.fromisoformat(result['starts_at']).astimezone(ZoneInfo(org['timezone'])).strftime('%d/%m/%Y alle %H:%M')
-            price=f" · Prezzo: {service['price_cents']/100:.2f} €" if service['price_cents'] is not None else ""
-            status_label="Prenotazione confermata" if result['status']=='confirmed' else "Richiesta registrata, in attesa di conferma"
-            reply=f"{status_label}! Servizio: {service['name']} · Quando: {local_when} · Durata: {service['duration_minutes']} minuti{price} · Nome: {payload['customer']} · Riferimento: {result['id']}."
-        code=management_code(org_id,result['id'])
-        if code: reply += " Conserva il codice gestione per modifiche o cancellazioni: "+code+"."
+        local_when=datetime.fromisoformat(result['starts_at']).astimezone(ZoneInfo(org['timezone'])).strftime('%d/%m/%Y alle %H:%M')
+        service_name=service['name'] if service else 'il servizio richiesto'
+        detail=f"{service_name} il {local_when}, a nome di {payload['customer']}"
+        if result['status']=='confirmed':
+            reply=f"Ti confermo l'appuntamento per {detail}."
+        else:
+            reply=f"Ho ricevuto la tua richiesta per {detail}. Ti avviserò appena l'appuntamento sarà confermato."
     output = {"reply": reply, "mode": "booking_result", "appointment": result}
     with database(write=True, organization_id=org_id) as db:
         if not payload.get('operation'):db.execute('UPDATE appointments SET created_by_ai=1 WHERE id=? AND organization_id=?',(result['id'],org_id))
