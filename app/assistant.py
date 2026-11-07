@@ -121,8 +121,15 @@ def confirm(database, org_id, pid, conversation_id=None, user_id=None):
         result=mutate_booking(database,org_id,payload['appointment_id'],payload['operation'],
             datetime.fromisoformat(payload['starts_at']) if payload.get('starts_at') else None,
             user_id,key='proposal:'+pid,guard=guard)
-        reply=("Operazione completata, riferimento "+str(result['id'])+"." if result['sync_status']=='local' else
-               "Operazione registrata. Attendo la conferma del calendario o del gestionale.")
+        with database() as db:
+            a=db.execute("SELECT a.customer,a.starts_at,s.name AS service FROM appointments a JOIN services s ON s.id=a.service_id WHERE a.id=? AND a.organization_id=?",(payload['appointment_id'],org_id)).fetchone()
+            tz=db.execute("SELECT timezone FROM organizations WHERE id=?",(org_id,)).fetchone()['timezone']
+        when=datetime.fromisoformat(a['starts_at']).astimezone(ZoneInfo(tz)).strftime('%d/%m/%Y alle %H:%M')
+        verb='spostamento' if payload['operation']=='reschedule' else 'cancellazione'
+        if result['sync_status'] in ('local','synced'):
+            reply=f"Ti confermo la {verb} della prenotazione {a['service']} del {when}, a nome di {a['customer']}."
+        else:
+            reply=f"Ho ricevuto la richiesta di {verb} per {a['service']} del {when}. Ti confermerò appena il calendario sarà aggiornato."
     else:
         result = create_booking(database, AppointmentRequest.model_validate(payload), user_id,
                                 key="proposal:"+pid, conversation_id=conversation_id)
@@ -169,7 +176,13 @@ def propose_change(database,org,args,cid,uid):
         if cid: db.execute('UPDATE booking_proposals SET expires_at=0 WHERE organization_id=? AND conversation_id=? AND result_json IS NULL',(org,cid))
         db.execute('INSERT INTO booking_proposals(id,organization_id,conversation_id,user_id,payload_json,expires_at,created_at) VALUES (?,?,?,?,?,?,?)',(pid,org,cid,uid,json.dumps(payload),int(time.time())+600,time.time_ns()))
     with database() as db: db_timezone=db.execute('SELECT timezone FROM organizations WHERE id=?',(org,)).fetchone()['timezone']
-    return {'proposal_id':pid,'mode':'proposal','reply':f"Vuoi confermare la {'cancellazione' if args.operation=='cancel' else 'modifica'} dell'appuntamento del {datetime.fromisoformat(appointment['starts_at']).astimezone(ZoneInfo(db_timezone)).strftime('%d/%m/%Y alle %H:%M')}? Rispondi sì per procedere."}
+    old_when=datetime.fromisoformat(appointment['starts_at']).astimezone(ZoneInfo(db_timezone)).strftime('%d/%m/%Y alle %H:%M')
+    if args.operation=='reschedule':
+        new_when=args.starts_at.astimezone(ZoneInfo(db_timezone)).strftime('%d/%m/%Y alle %H:%M')
+        reply=f"Vuoi spostare l'appuntamento dal {old_when} al {new_when}? Rispondi sì per confermare."
+    else:
+        reply=f"Vuoi cancellare l'appuntamento del {old_when}? Rispondi sì per confermare."
+    return {'proposal_id':pid,'mode':'proposal','reply':reply}
 
 
 async def respond(database, org_id, message, conversation_id=None, user_id=None, policy_revision=None):
