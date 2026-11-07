@@ -28,6 +28,11 @@ actions['channel-connect']=async channel=>{
   const form=$('#dialog .channel-schedule');
   await send(controlPath()+'/'+channel,form?scheduleValue(form,false):{enabled:false,all_day:p.all_day,start_time:p.start_time,end_time:p.end_time,days:p.days},'PUT');
  }
+ if(channel==='whatsapp'&&Number(state.org)===2){
+  await actions['whatsapp-test-connect']();
+  if($('#dialog').open)$('#dialog').close();
+  return;
+ }
  $('#dialog').close();
  if(channel==='voice')return navigate('voice');
  if(p.connected)return actions['channel-manage'](channel);
