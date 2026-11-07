@@ -231,6 +231,32 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
     if proposal:
         try:return confirm(database,org_id,proposal['id'],conversation_id,user_id)
         except HTTPException as e:return {'mode':'tool_error','reply':str(e.detail)}
+    selection_scope='appointment_selection:'+scope
+    with database() as db:
+        selection=db.execute("SELECT payload_json FROM booking_intake_drafts WHERE organization_id=? AND scope=? AND expires_at>?",(org_id,selection_scope,int(time.time()))).fetchone()
+    if selection and conversation_id:
+        data=json.loads(selection['payload_json'])
+        choices=data['appointments']
+        chosen=None
+        number=re.fullmatch(r'\s*(?:il\s*)?(\d+)\s*',message.casefold())
+        if number and 1<=int(number.group(1))<=len(choices):
+            chosen=choices[int(number.group(1))-1]
+        if chosen is None:
+            for choice in choices:
+                with database() as db:
+                    row=db.execute("SELECT starts_at FROM appointments WHERE id=? AND organization_id=?",(choice,org_id)).fetchone()
+                if row and datetime.fromisoformat(row['starts_at']).strftime('%d/%m/%Y') in message:
+                    chosen=choice
+                    break
+        if chosen is None:
+            return {'mode':'clarification','reply':'Quale appuntamento intendi? Rispondi con il numero corrispondente.'}
+        with database(write=True,organization_id=org_id) as db:
+            db.execute("DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?",(org_id,selection_scope))
+        if data['operation']=='cancel':
+            return propose_change(database,org_id,ChangeProposal(appointment_id=chosen,operation='cancel'),conversation_id,user_id)
+        with database(write=True,organization_id=org_id) as db:
+            db.execute("INSERT INTO booking_intake_drafts(organization_id,scope,payload_json,questions_json,expires_at) VALUES (?,?,?,?,?) ON CONFLICT(organization_id,scope) DO UPDATE SET payload_json=excluded.payload_json,expires_at=excluded.expires_at",(org_id,'reschedule:'+scope,json.dumps({'appointment_id':chosen}),'[]',int(time.time())+1800))
+        return {'mode':'clarification','reply':'Per quale nuova data e ora vuoi spostarlo?'}
     # Pending reschedule: keep the appointment selection across WhatsApp turns.
     move_scope='reschedule:'+scope
     with database() as db:
@@ -269,7 +295,11 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         def display(a):
             when=datetime.fromisoformat(a['starts_at']).astimezone(ZoneInfo(timezone_name)).strftime('%d/%m/%Y alle %H:%M')
             return f"{a['name']} del {when}"
-        if len(appointments)>1:return {'mode':'clarification','reply':'Quale appuntamento vuoi modificare? '+ '; '.join(display(a) for a in appointments)}
+        if len(appointments)>1:
+            with database(write=True,organization_id=org_id) as db:
+                db.execute("INSERT INTO booking_intake_drafts(organization_id,scope,payload_json,questions_json,expires_at) VALUES (?,?,?,?,?) ON CONFLICT(organization_id,scope) DO UPDATE SET payload_json=excluded.payload_json,expires_at=excluded.expires_at",(org_id,selection_scope,json.dumps({'operation':operation,'appointments':[a['id'] for a in appointments]}),'[]',int(time.time())+1800))
+            choices='; '.join(f"{index}. {display(a)}" for index,a in enumerate(appointments,1))
+            return {'mode':'clarification','reply':f"Quale appuntamento vuoi {'cancellare' if operation=='cancel' else 'spostare'}? {choices} Rispondi con il numero."}
         a=appointments[0]
         if operation=='reschedule':
             with database(write=True,organization_id=org_id) as db:
