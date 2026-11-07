@@ -224,8 +224,8 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         draft=db.execute('SELECT * FROM booking_intake_drafts WHERE organization_id=? AND scope=? AND expires_at>?',(org_id,scope,int(time.time()))).fetchone()
         proposal=None
         if not draft and normalized in {'confermo','si','sì','si confermo','sì confermo','va bene','conferma','ok confermo','sì va bene','si va bene'}:
-            if conversation_id:proposal=db.execute('SELECT id FROM booking_proposals WHERE organization_id=? AND conversation_id=? ORDER BY created_at DESC,expires_at DESC LIMIT 1',(org_id,conversation_id)).fetchone()
-            else:proposal=db.execute('SELECT id FROM booking_proposals WHERE organization_id=? AND user_id=? AND conversation_id IS NULL ORDER BY created_at DESC,expires_at DESC LIMIT 1',(org_id,user_id)).fetchone()
+            if conversation_id:proposal=db.execute('SELECT id FROM booking_proposals WHERE organization_id=? AND conversation_id=? AND result_json IS NULL AND expires_at>? ORDER BY created_at DESC LIMIT 1',(org_id,conversation_id,int(time.time()))).fetchone()
+            else:proposal=db.execute('SELECT id FROM booking_proposals WHERE organization_id=? AND user_id=? AND conversation_id IS NULL AND result_json IS NULL AND expires_at>? ORDER BY created_at DESC LIMIT 1',(org_id,user_id,int(time.time()))).fetchone()
     utterances=[h['body'] for h in history if h['direction']=='inbound']
     if not utterances or utterances[-1]!=message:utterances.append(message)
     selected=None;ambiguous=[]
@@ -283,10 +283,19 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         if not appointment or not conv or appointment['contact_id']!=conv['contact_id']:
             with database(write=True,organization_id=org_id) as db:db.execute("DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?",(org_id,move_scope))
             return {'mode':'clarification','reply':'Non trovo più questa prenotazione. Quale appuntamento vuoi spostare?'}
+        if re.search(r'\b(?:annulla|lascia perdere|non importa|fermati)\b',message.casefold()):
+            with database(write=True,organization_id=org_id) as db:db.execute("DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?",(org_id,move_scope))
+            return {'mode':'clarification','reply':'Va bene, non modifico l’appuntamento.'}
         from app.booking_language import facts
-        parsed=facts([message],tz)
+        # Accumulate a date and time supplied across separate turns. Do not infer
+        # the previous appointment's date as the customer's new preference.
+        previous=data.get('requested',[])
+        parsed=facts([*previous,message],tz)
         if not parsed['has_day'] or not parsed['has_time']:
-            return {'mode':'clarification','reply':'Per quale giorno e a che ora preferisci spostarlo?'}
+            with database(write=True,organization_id=org_id) as db:
+                db.execute("UPDATE booking_intake_drafts SET payload_json=? WHERE organization_id=? AND scope=?",(json.dumps({**data,'requested':[*previous,message][-5:]}),org_id,move_scope))
+            question='Per quale giorno vuoi spostarlo?' if not parsed['has_day'] else 'A che ora preferisci?'
+            return {'mode':'clarification','reply':question}
         try:
             target=datetime.combine(parsed['day'],parsed['time'],ZoneInfo(tz))
             if target<=datetime.now(ZoneInfo(tz)):raise ValueError('past')
