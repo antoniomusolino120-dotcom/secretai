@@ -45,7 +45,7 @@ def facts(utterances,timezone):
         # Also accept a name appended after a complete date/time, e.g.
         # "Domani alle 10, Alessandro Fragola", without asking again.
         if not name and candidate is not None and clock is not None:
-            tail=re.search(r'\b(?:alle|ore)\s+(?:\d{1,2}|'+NUMBER_PATTERN+r')(?:[:.][0-5]\d)?\s*[,;]\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]{1,100})\s*$',body,re.I)
+            tail=re.search(r'\b(?:alle|ore)\s+(?:\d{1,2}|'+NUMBER_PATTERN+r")(?:[:.][0-5]\d)?\s*[,;]\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]{1,100})\s*$",body,re.I)
             if tail:
                 value=tail[1].strip(' .,-')
                 if value and not re.search(r'\b(?:domani|oggi|dopodomani|prenotare|tavolo)\b',value,re.I):
