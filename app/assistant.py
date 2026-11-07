@@ -71,7 +71,7 @@ TOOLS = [tool("services", "Elenca servizi, durata e prezzi"),
          tool("business_info", "Mostra informazioni dell'azienda"),
          tool("availability", "Verifica uno slot esatto con fuso orario", SlotInput.model_json_schema()),
          tool("propose_booking", "Prepara una proposta quando cliente, servizio e orario sono definiti. Non prenota.", Proposal.model_json_schema()),
-         tool("propose_change", "Prepara spostamento o cancellazione. Per clienti non identificati occorrono riferimento e codice gestione.",ChangeProposal.model_json_schema()),
+         tool("propose_change", "Prepara spostamento o cancellazione di un appuntamento verificato. Su WhatsApp usa il contatto associato al numero, senza richiedere codici.",ChangeProposal.model_json_schema()),
          tool("my_appointments", "Elenca solo appuntamenti del cliente identificato in questa conversazione"),
          tool("handoff", "Passa a un operatore SOLO se il cliente chiede esplicitamente una persona o un operatore")]
 
@@ -235,7 +235,7 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         matches=[v for score,v in scored if best and score==best]
         if matches:
             selected=matches[0] if len(matches)==1 else None;ambiguous=matches if len(matches)>1 else [];break
-    if normalized in {'ricomincia','annulla la richiesta','annulla la proposta'} or not draft and normalized in {'no','non confermo'}:
+    if normalized in {'ricomincia','annulla la richiesta','annulla la proposta','lascia perdere','non importa','fermati'} or normalized in {'no','non confermo','no grazie'} and not draft:
         with database(write=True,organization_id=org_id) as db:
             db.execute('DELETE FROM booking_intake_drafts WHERE organization_id=? AND scope=?',(org_id,scope))
             if conversation_id:db.execute('UPDATE booking_proposals SET expires_at=0 WHERE organization_id=? AND conversation_id=? AND result_json IS NULL',(org_id,conversation_id))
@@ -332,10 +332,8 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
     handoff=bool(re.search(r'\b(?:voglio|vorrei|posso|potrei|fammi|passami|mettimi|desidero|chiedo|preferisco|parlare|sentire|contattare)\b.{0,65}\b(?:operatore|persona|umano|responsabile|addetto)\b|^\s*(?:operatore|persona vera|essere umano)\s*(?:per favore|grazie)?\s*[?!]?$', message.casefold()))
     info=any(v in message.casefold() for v in ('quanto dura','quanto costa','prezzo','dettagli','in cosa consiste','cosa comprende','come si svolge','più informazioni'))
     if ambiguous and not draft and not handoff:return details_reply(['service'],ambiguous)
-    if not draft and not info:
-        with database(write=True,organization_id=org_id) as db:
-            if conversation_id:db.execute('UPDATE booking_proposals SET expires_at=0 WHERE organization_id=? AND conversation_id=? AND result_json IS NULL',(org_id,conversation_id))
-            else:db.execute('UPDATE booking_proposals SET expires_at=0 WHERE organization_id=? AND user_id=? AND conversation_id IS NULL AND result_json IS NULL',(org_id,user_id))
+    # An unrelated question must not silently invalidate a pending booking.
+    # Pending proposals expire on timeout, explicit refusal or replacement.
     if draft and not handoff:
         args=Proposal.model_validate_json(draft['payload_json'])
         if info:selected=next((v for v in services if v['id']==args.service_id),None)
