@@ -163,6 +163,10 @@ def install(database, current_user, require_org):
                 numbers = result.json().get("data", [])
                 if not any(str(item.get("id")) == phone_id for item in numbers):
                     raise HTTPException(422, "Il numero di prova non appartiene al WABA indicato")
+                subscription = await client.post(base + "/" + waba_id + "/subscribed_apps",
+                    headers={"Authorization": "Bearer " + token})
+                if subscription.status_code >= 400:
+                    raise HTTPException(422, "Meta non ha accettato l'iscrizione dell'app ai webhook WhatsApp (HTTP " + str(subscription.status_code) + ")")
             except httpx.HTTPError:
                 raise HTTPException(422, "Meta non ha autorizzato la verifica del numero di prova")
         with database(write=True, organization_id=organization_id) as db:
