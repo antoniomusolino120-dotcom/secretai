@@ -137,7 +137,7 @@ def confirm(database, org_id, pid, conversation_id=None, user_id=None):
             price=f" · Prezzo: {service['price_cents']/100:.2f} €" if service['price_cents'] is not None else ""
             status_label="Prenotazione confermata" if result['status']=='confirmed' else "Richiesta registrata, in attesa di conferma"
             reply=f"{status_label}! Servizio: {service['name']} · Quando: {local_when} · Durata: {service['duration_minutes']} minuti{price} · Nome: {payload['customer']} · Riferimento: {result['id']}."
-                code=management_code(org_id,result['id'])
+        code=management_code(org_id,result['id'])
         if code: reply += " Conserva il codice gestione per modifiche o cancellazioni: "+code+"."
     output = {"reply": reply, "mode": "booking_result", "appointment": result}
     with database(write=True, organization_id=org_id) as db:
