@@ -325,7 +325,7 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         if operation=='reschedule':
             with database(write=True,organization_id=org_id) as db:
                 db.execute("INSERT INTO booking_intake_drafts(organization_id,scope,payload_json,questions_json,expires_at) VALUES (?,?,?,?,?) ON CONFLICT(organization_id,scope) DO UPDATE SET payload_json=excluded.payload_json,expires_at=excluded.expires_at",(org_id,move_scope,json.dumps({'appointment_id':a['id']}),'[]',int(time.time())+1800))
-            return {'mode':'clarification','reply':f"Vuoi spostare l'appuntamento per {display(a)}? Dimmi la nuova data e ora che preferisci."}
+            return {'mode':'clarification','reply':f"Va bene, spostiamo {display(a)}. Per quale giorno preferisci?"}
         try:
             return propose_change(database,org_id,ChangeProposal(appointment_id=a['id'],operation='cancel'),conversation_id,user_id)
         except HTTPException as e:return {'mode':'clarification','reply':str(e.detail)}
