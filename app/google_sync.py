@@ -88,7 +88,7 @@ def handlers(database):
                     except (ValueError, TypeError):
                         pass
                     body = {"summary": "SecretAI — " + appointment["service"] + " — " + appointment["customer"],
-                            "description": "\\n".join(details),
+                            "description": "\n".join(details),
                             "start": {"dateTime": appointment["starts_at"]}, "end": {"dateTime": appointment["ends_at"]},
                             "extendedProperties": {"private": {"secretai_org": str(org_id), "secretai_appointment": str(appointment_id)}}}
                     existing = await client.get(CALENDAR_URL+prefix+"/"+eid, headers=headers)
