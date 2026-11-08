@@ -427,8 +427,7 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
                 name,args=calls[0]['function']['name'],calls[0]['function']['arguments']
                 if isinstance(args,str):args=json.loads(args)
         except (httpx.HTTPError,ValueError,KeyError,TypeError):
-            if conversation_id:
-                return {'mode':'offline','reply':'Al momento non riesco a verificare tutti i dettagli. Puoi riprovare tra poco o indicarmi il servizio e il giorno che preferisci?'}
+            return {'mode':'offline','reply':'Al momento non riesco a verificare tutti i dettagli. Puoi riprovare tra poco?'}
     try:
         from app.channel_controls import assert_current
         with database() as db: assert_current(db, org_id)
