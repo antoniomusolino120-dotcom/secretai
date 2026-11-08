@@ -423,12 +423,11 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
                     r=await client.post(os.getenv('OLLAMA_URL','http://127.0.0.1:11434').rstrip('/')+'/api/chat',json={'model':os.getenv('OLLAMA_MODEL','qwen2.5:3b'),'messages':messages,'tools':TOOLS,'stream':False,'options':{'temperature':0,'num_predict':256,'num_ctx':4096}})
                     r.raise_for_status()
                     calls=r.json().get('message',{}).get('tool_calls',[])
-                if len(calls)!=1:return details_reply(['day','time','customer'] if selected else ['service','day','time','customer'],services,selected)
+                if len(calls)!=1:return {'mode':'clarification','reply':'Non ho capito bene la richiesta. Puoi spiegarmela in un altro modo?'}
                 name,args=calls[0]['function']['name'],calls[0]['function']['arguments']
                 if isinstance(args,str):args=json.loads(args)
         except (httpx.HTTPError,ValueError,KeyError,TypeError):
-            if conversation_id:
-                return {'mode':'offline','reply':'Al momento non riesco a verificare tutti i dettagli. Puoi riprovare tra poco o indicarmi il servizio e il giorno che preferisci?'}
+            return {'mode':'offline','reply':'Al momento non riesco a verificare tutti i dettagli. Puoi riprovare tra poco?'}
     try:
         from app.channel_controls import assert_current
         with database() as db: assert_current(db, org_id)
@@ -460,7 +459,7 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
             with database() as db:
                 _,_,busy=slot(db,org_id,data.service_id,data.starts_at)
                 google=db.execute('SELECT 1 FROM google_connections WHERE organization_id=?',(org_id,)).fetchone()
-            return {'mode':'tool','reply':'L’orario è occupato.' if busy else 'Lo slot è libero nell’agenda locale; occorre verificare Google.' if google else 'Lo slot risulta disponibile al momento della verifica.'}
+            return {'mode':'tool','reply':'L’orario è occupato.' if busy else 'L’agenda locale non mostra conflitti, ma devo ancora verificare Google Calendar prima di confermare la disponibilità.' if google else 'Lo slot risulta disponibile al momento della verifica.'}
         if name=='my_appointments':
             with database() as db:
                 conv=db.execute("SELECT contact_id,channel FROM conversations WHERE id=? AND organization_id=?",(conversation_id,org_id)).fetchone() if conversation_id else None
