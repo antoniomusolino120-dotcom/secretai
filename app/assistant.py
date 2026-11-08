@@ -291,6 +291,15 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
         # the previous appointment's date as the customer's new preference.
         previous=data.get('requested',[])
         parsed=facts([*previous,message],tz)
+        # Italian colloquial hours 1-7 need disambiguation; never book at 04:00
+        # merely because the customer said "alle quattro".
+        if parsed['has_day'] and parsed['has_time'] and 1<=parsed['time'].hour<=7:
+            if re.search(r'\b(?:pomeriggio|sera|di pomeriggio)\b',normalized) or normalized in {'si','sì','si pomeriggio','sì pomeriggio','esatto','certo'} and data.get('awaiting_pm'):
+                parsed['time']=parsed['time'].replace(hour=parsed['time'].hour+12)
+            elif not re.search(r'\b(?:mattina|notte)\b',normalized):
+                with database(write=True,organization_id=org_id) as db:
+                    db.execute("UPDATE booking_intake_drafts SET payload_json=? WHERE organization_id=? AND scope=?",(json.dumps({**data,'requested':[*previous,message][-5:],'awaiting_pm':True}),org_id,move_scope))
+                return {'mode':'clarification','reply':"Intendi di pomeriggio?"}
         if not parsed['has_day'] or not parsed['has_time']:
             with database(write=True,organization_id=org_id) as db:
                 db.execute("UPDATE booking_intake_drafts SET payload_json=? WHERE organization_id=? AND scope=?",(json.dumps({**data,'requested':[*previous,message][-5:]}),org_id,move_scope))
@@ -329,6 +338,22 @@ async def _respond(database, org_id, message, conversation_id=None, user_id=None
             return {'mode':'clarification','reply':f"Quale appuntamento vuoi {'cancellare' if operation=='cancel' else 'spostare'}? {choices} Rispondi con il numero."}
         a=appointments[0]
         if operation=='reschedule':
+            # Keep the target expressed in the very first request, instead of
+            # discarding it and asking the customer for the same information.
+            from app.booking_language import facts
+            initial=facts([message],timezone_name)
+            if initial['has_day'] and initial['has_time']:
+                if initial['time'].hour in range(1, 8) and not re.search(r'\b(?:mattina|notte|pomeriggio|sera|16|17|18|19)\b',normalized):
+                    with database(write=True,organization_id=org_id) as db:
+                        db.execute("INSERT INTO booking_intake_drafts(organization_id,scope,payload_json,questions_json,expires_at) VALUES (?,?,?,?,?) ON CONFLICT(organization_id,scope) DO UPDATE SET payload_json=excluded.payload_json,expires_at=excluded.expires_at",(org_id,move_scope,json.dumps({'appointment_id':a['id'],'requested':[message]}),'[]',int(time.time())+1800))
+                    return {'mode':'clarification','reply':"Intendi le quattro del pomeriggio?"}
+                target=datetime.combine(initial['day'],initial['time'],ZoneInfo(timezone_name))
+                if target>datetime.now(ZoneInfo(timezone_name)):
+                    try:
+                        return propose_change(database,org_id,ChangeProposal(appointment_id=a['id'],operation='reschedule',starts_at=target),conversation_id,user_id)
+                    except HTTPException as exc:
+                        return {'mode':'clarification','reply':str(exc.detail)}
+
             with database(write=True,organization_id=org_id) as db:
                 db.execute("INSERT INTO booking_intake_drafts(organization_id,scope,payload_json,questions_json,expires_at) VALUES (?,?,?,?,?) ON CONFLICT(organization_id,scope) DO UPDATE SET payload_json=excluded.payload_json,expires_at=excluded.expires_at",(org_id,move_scope,json.dumps({'appointment_id':a['id']}),'[]',int(time.time())+1800))
             return {'mode':'clarification','reply':f"Va bene, spostiamo {display(a)}. Per quale giorno preferisci?"}
